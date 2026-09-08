@@ -198,16 +198,16 @@ export function AuthModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto">
       {/* Backdrop */}
       <div className="fixed inset-0 bg-black/85 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl p-6 sm:p-7 z-10 animate-fade-in my-8">
+      <div className="relative w-full max-w-md max-h-[92vh] flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl p-4.5 sm:p-7 z-10 animate-fade-in my-auto">
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
+        <div className="flex items-center justify-between pb-4 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+            <div className="h-9 w-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
               {view === 'confirm_pending' ? (
                 <MailCheck className="h-4.5 w-4.5 text-amber-400" />
               ) : (
@@ -224,7 +224,7 @@ export function AuthModal({
                   ? 'Masuk ke Akun'
                   : 'Daftar Akun Baru'}
               </h2>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
                 {view === 'confirm_pending'
                   ? 'Verifikasi email sebelum akun dapat terhubung'
                   : 'Autentikasi aman terenkripsi via Supabase'}
@@ -241,7 +241,7 @@ export function AuthModal({
 
         {/* 1. ALREADY LOGGED IN STATE */}
         {currentUserEmail ? (
-          <div className="mt-5 space-y-4">
+          <div className="mt-4 sm:mt-5 space-y-4 overflow-y-auto pr-1">
             <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20 text-xs text-emerald-300">
               <div className="flex items-center gap-2 font-bold text-sm text-emerald-400 mb-1">
                 <CheckCircle2 className="h-4 w-4" />
@@ -297,7 +297,7 @@ export function AuthModal({
           </div>
         ) : view === 'confirm_pending' ? (
           /* 2. CONFIRMATION PENDING SCREEN (MANDATORY VERIFICATION) */
-          <div className="mt-5 space-y-4 animate-fade-in">
+          <div className="mt-4 sm:mt-5 space-y-4 animate-fade-in overflow-y-auto pr-1">
             <div className="text-center py-2">
               <div className="h-14 w-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto mb-3 text-amber-400 shadow-lg shadow-amber-500/10">
                 <MailCheck className="h-7 w-7" />
@@ -382,7 +382,7 @@ export function AuthModal({
           </div>
         ) : (
           /* 3. SIGN IN / SIGN UP FORM */
-          <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+          <form onSubmit={handleSubmit} className="mt-4 sm:mt-5 space-y-3.5 sm:space-y-4 overflow-y-auto pr-1">
             {errorMsg && (
               <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-950/25 text-xs text-rose-300 flex items-start gap-2.5 animate-fade-in">
                 <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />

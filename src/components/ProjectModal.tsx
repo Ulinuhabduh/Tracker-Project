@@ -116,7 +116,7 @@ export function ProjectModal({
       />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl p-6 sm:p-7 z-10 animate-fade-in my-8">
+      <div className="relative w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl p-4 sm:p-7 z-10 animate-fade-in my-auto sm:my-8 max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
           <div>
             <h2 className="text-lg font-bold text-white tracking-tight">

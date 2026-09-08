@@ -129,13 +129,13 @@ export function SupabaseConfigModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto">
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl p-6 sm:p-7 z-10 animate-fade-in my-8">
-        <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
+      <div className="relative w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl p-4 sm:p-7 z-10 animate-fade-in my-auto">
+        <div className="flex items-center justify-between pb-4 border-b border-zinc-800 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className={`h-9 w-9 rounded-xl flex items-center justify-center ${
+            <div className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${
               isConfig 
                 ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' 
                 : 'bg-amber-500/10 border border-amber-500/20 text-amber-400'
@@ -143,10 +143,10 @@ export function SupabaseConfigModal({
               <Database className="h-4.5 w-4.5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white tracking-tight">
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
                 Status Koneksi Supabase
               </h2>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
                 Koneksi terhubung otomatis melalui file <code className="text-zinc-200 font-mono">.env.local</code>
               </p>
             </div>
@@ -159,7 +159,7 @@ export function SupabaseConfigModal({
           </button>
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="mt-4 sm:mt-5 space-y-4 overflow-y-auto pr-1">
           {/* Status Banner */}
           <div className={`p-4 rounded-xl border flex items-start gap-3 ${
             isConfig
@@ -245,12 +245,12 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '•
           </div>
 
           {/* Footer Actions */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-zinc-800">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-4 border-t border-zinc-800">
             <button
               type="button"
               onClick={handleTestConnection}
               disabled={isTesting}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 text-xs font-medium transition-all disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 text-xs font-medium transition-all disabled:opacity-50"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isTesting ? 'animate-spin' : ''}`} />
               <span>{isTesting ? 'Sedang Menguji...' : 'Uji Koneksi Supabase Sekarang'}</span>
@@ -259,7 +259,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '•
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold transition-all"
+              className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-semibold transition-all text-center"
             >
               Tutup
             </button>

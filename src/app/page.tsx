@@ -357,7 +357,7 @@ export default function Home() {
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-5 sm:pt-8 pb-24 sm:pb-16">
         {selectedProjectId && activeProjectDetail ? (
           /* WORKSPACE VIEW: Selected Project */
           <ProjectDetail
@@ -378,12 +378,12 @@ export default function Home() {
           />
         ) : (
           /* DASHBOARD VIEW: Portfolio Overview */
-          <div className="animate-fade-in space-y-8">
+          <div className="animate-fade-in space-y-6 sm:space-y-8">
             {/* Top Hero & KPI Cards */}
             <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 sm:mb-6">
                 <div>
-                  <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                  <h1 className="text-xl sm:text-3xl font-extrabold text-white tracking-tight">
                     Progress Portfolio Dashboard
                   </h1>
                   <p className="text-xs sm:text-sm text-zinc-400 mt-1">
@@ -391,7 +391,7 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2">
                   <button
                     onClick={() => {
                       setProjectToEdit(null);
@@ -409,23 +409,23 @@ export default function Home() {
               {!userEmail && (
                 <div 
                   onClick={() => setIsAuthModalOpen(true)}
-                  className="mb-6 p-3.5 sm:p-4 rounded-2xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/40 via-zinc-900 to-indigo-950/30 hover:border-indigo-500/50 cursor-pointer text-xs text-indigo-300 flex items-center justify-between gap-3 transition-all group"
+                  className="mb-5 sm:mb-6 p-3 sm:p-4 rounded-2xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/40 via-zinc-900 to-indigo-950/30 hover:border-indigo-500/50 cursor-pointer text-xs text-indigo-300 flex items-center justify-between gap-3 transition-all group"
                 >
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
                       <ShieldCheck className="h-4.5 w-4.5" />
                     </div>
                     <div>
-                      <span className="font-bold text-white block">
+                      <span className="font-bold text-white block text-xs sm:text-sm">
                         Ingin data Anda terproteksi aman antar-device?
                       </span>
-                      <p className="text-indigo-200/80 text-[11px] mt-0.5">
+                      <p className="text-indigo-200/80 text-[11px] mt-0.5 leading-relaxed">
                         Masuk dengan Email & Kata Sandi agar data proyek Anda terproteksi dan tersinkronisasi aman.
                       </p>
                     </div>
                   </div>
-                  <span className="text-xs font-semibold text-indigo-400 group-hover:text-white shrink-0 underline">
-                    Masuk Sekarang →
+                  <span className="text-xs font-semibold text-indigo-400 group-hover:text-white shrink-0 underline whitespace-nowrap">
+                    Masuk →
                   </span>
                 </div>
               )}
@@ -435,26 +435,26 @@ export default function Home() {
             </div>
 
             {/* Filter Bar */}
-            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 space-y-3">
-              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            <div className="p-3 sm:p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 space-y-2.5 sm:space-y-3">
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 sm:gap-3">
                 {/* Search Bar */}
                 <div className="relative flex-1">
-                  <Search className="absolute left-3.5 top-3 h-4 w-4 text-zinc-500" />
+                  <Search className="absolute left-3 top-2.5 sm:top-3 h-4 w-4 text-zinc-500" />
                   <input
                     type="text"
-                    placeholder="Cari berdasarkan nama proyek, teknologi, deskripsi, atau tags..."
+                    placeholder="Cari nama proyek, tags, deskripsi..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 rounded-xl border border-zinc-800 bg-zinc-950 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-indigo-500 transition-all"
+                    className="w-full pl-9 sm:pl-10 pr-4 py-2 rounded-xl border border-zinc-800 bg-zinc-950 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-indigo-500 transition-all"
                   />
                 </div>
 
                 {/* Dropdowns */}
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
                   <select
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="px-3 py-2 rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-300 text-xs focus:outline-none focus:border-indigo-500"
+                    className="w-full sm:w-auto px-3 py-2 rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-300 text-xs focus:outline-none focus:border-indigo-500 truncate"
                   >
                     <option value="all">Semua Kategori</option>
                     {categories.map((c) => (
@@ -464,30 +464,30 @@ export default function Home() {
                     ))}
                   </select>
 
-                  <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-300 text-xs">
-                    <ArrowUpDown className="h-3.5 w-3.5 text-zinc-500" />
+                  <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-300 text-xs w-full sm:w-auto">
+                    <ArrowUpDown className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
                     <select
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
-                      className="bg-transparent text-zinc-300 text-xs focus:outline-none"
+                      className="bg-transparent text-zinc-300 text-xs focus:outline-none w-full truncate"
                     >
-                      <option value="updated">Terbaru Diperbarui</option>
-                      <option value="deadline">Mendekati Deadline</option>
-                      <option value="progress">Progres Tertinggi</option>
-                      <option value="title">Nama Proyek (A-Z)</option>
+                      <option value="updated">Terbaru</option>
+                      <option value="deadline">Deadline</option>
+                      <option value="progress">Progres</option>
+                      <option value="title">Nama (A-Z)</option>
                     </select>
                   </div>
                 </div>
               </div>
 
-              {/* Status Filter Pills */}
-              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs border-t border-zinc-850">
-                <span className="text-[11px] font-mono text-zinc-400 mr-1 hidden sm:inline">
+              {/* Status Filter Pills: Horizontally scrollable on mobile */}
+              <div className="flex items-center gap-1.5 pt-2 text-xs border-t border-zinc-850 overflow-x-auto scrollbar-none pb-0.5 -mx-1 px-1">
+                <span className="text-[11px] font-mono text-zinc-400 mr-1 hidden sm:inline shrink-0">
                   Status:
                 </span>
                 <button
                   onClick={() => setStatusFilter('all')}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`shrink-0 px-3 py-1.5 rounded-lg transition-all text-xs ${
                     statusFilter === 'all'
                       ? 'bg-zinc-800 text-white font-medium shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
@@ -497,7 +497,7 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => setStatusFilter('in_progress')}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`shrink-0 px-3 py-1.5 rounded-lg transition-all text-xs ${
                     statusFilter === 'in_progress'
                       ? 'bg-sky-500/20 text-sky-300 font-medium border border-sky-500/30'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
@@ -507,7 +507,7 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => setStatusFilter('planning')}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`shrink-0 px-3 py-1.5 rounded-lg transition-all text-xs ${
                     statusFilter === 'planning'
                       ? 'bg-zinc-700 text-white font-medium'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
@@ -517,7 +517,7 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => setStatusFilter('completed')}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`shrink-0 px-3 py-1.5 rounded-lg transition-all text-xs ${
                     statusFilter === 'completed'
                       ? 'bg-emerald-500/20 text-emerald-300 font-medium border border-emerald-500/30'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
@@ -527,7 +527,7 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => setStatusFilter('on_hold')}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`shrink-0 px-3 py-1.5 rounded-lg transition-all text-xs ${
                     statusFilter === 'on_hold'
                       ? 'bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
@@ -628,6 +628,21 @@ export default function Home() {
         onClose={() => setIsClearDataModalOpen(false)}
         onDataCleared={handleDataCleared}
       />
+
+      {/* Mobile Floating Action Button (FAB) for adding new project */}
+      {!selectedProjectId && (
+        <button
+          type="button"
+          onClick={() => {
+            setProjectToEdit(null);
+            setIsProjectModalOpen(true);
+          }}
+          className="sm:hidden fixed bottom-6 right-6 z-40 h-13 w-13 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-600/40 flex items-center justify-center transition-all active:scale-90 border border-indigo-400/30"
+          aria-label="Tambah Proyek Baru"
+        >
+          <Plus className="h-6 w-6 stroke-[2.5]" />
+        </button>
+      )}
 
       {/* Toast Feedback */}
       <ToastContainer toasts={toasts} onDismiss={removeToast} />

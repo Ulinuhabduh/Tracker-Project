@@ -64,7 +64,7 @@ export function ClearDataModal({
       <div className="fixed inset-0 bg-black/85 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal Dialog */}
-      <div className="relative w-full max-w-lg rounded-2xl border border-rose-500/30 bg-zinc-900 shadow-2xl p-6 sm:p-7 z-10 animate-fade-in my-8">
+      <div className="relative w-full max-w-lg rounded-2xl border border-rose-500/30 bg-zinc-900 shadow-2xl p-4 sm:p-7 z-10 animate-fade-in my-auto sm:my-8 max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-start justify-between pb-4 border-b border-zinc-800">
           <div className="flex items-center gap-3">
