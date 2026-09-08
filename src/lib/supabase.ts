@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, User, Session } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -11,7 +11,7 @@ export const isConfigured = Boolean(
   !supabaseAnonKey.includes('your-anon')
 );
 
-// Supabase client with active session persistence
+// Supabase client with active session persistence and url hash detection
 export const supabase: SupabaseClient = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseAnonKey || 'placeholder-anon-key',
@@ -64,45 +64,118 @@ export async function testSupabaseConnection(): Promise<{ success: boolean; mess
 }
 
 // ==============================================================================
-// 🔐 SECURE EMAIL & PASSWORD AUTHENTICATION
+// 🔐 SECURE EMAIL & PASSWORD AUTHENTICATION WITH MANDATORY CONFIRMATION
 // ==============================================================================
 
 /**
- * Login via Email & Password
+ * Register via Email & Password with email confirmation requirement
+ */
+export async function signUpWithEmailPassword(
+  email: string,
+  password: string
+): Promise<{ user: User | null; session: Session | null; needsConfirmation: boolean; error: Error | null }> {
+  if (!isConfigured) {
+    return { user: null, session: null, needsConfirmation: false, error: new Error('Supabase belum dikonfigurasi di .env.local') };
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+
+  const { data, error } = await supabase.auth.signUp({
+    email: cleanEmail,
+    password,
+    options: {
+      emailRedirectTo: redirectTo,
+    },
+  });
+
+  if (error) {
+    return { user: null, session: null, needsConfirmation: false, error };
+  }
+
+  // If Supabase has email confirmations enabled (default), session will be null or email_confirmed_at is null
+  const needsConfirmation = !data.session || (data.user && !data.user.email_confirmed_at);
+
+  return {
+    user: data.user,
+    session: data.session,
+    needsConfirmation: Boolean(needsConfirmation),
+    error: null,
+  };
+}
+
+/**
+ * Login via Email & Password (requires confirmed email)
  */
 export async function signInWithEmailPassword(
   email: string,
   password: string
+): Promise<{ user: User | null; session: Session | null; isNotConfirmed: boolean; error: Error | null }> {
+  if (!isConfigured) {
+    return { user: null, session: null, isNotConfirmed: false, error: new Error('Supabase belum dikonfigurasi di .env.local') };
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: cleanEmail,
+    password,
+  });
+
+  if (error) {
+    const isNotConfirmed = error.message.toLowerCase().includes('email not confirmed');
+    return { user: null, session: null, isNotConfirmed, error };
+  }
+
+  return {
+    user: data.user,
+    session: data.session,
+    isNotConfirmed: false,
+    error: null,
+  };
+}
+
+/**
+ * Verify OTP / token from confirmation email
+ */
+export async function verifyEmailOtp(
+  email: string,
+  token: string
 ): Promise<{ user: User | null; error: Error | null }> {
   if (!isConfigured) {
     return { user: null, error: new Error('Supabase belum dikonfigurasi di .env.local') };
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.verifyOtp({
     email: email.trim().toLowerCase(),
-    password,
+    token: token.trim(),
+    type: 'signup',
   });
 
   return { user: data.user, error };
 }
 
 /**
- * Register via Email & Password
+ * Resend confirmation email
  */
-export async function signUpWithEmailPassword(
-  email: string,
-  password: string
-): Promise<{ user: User | null; error: Error | null }> {
+export async function resendConfirmationEmail(
+  email: string
+): Promise<{ error: Error | null }> {
   if (!isConfigured) {
-    return { user: null, error: new Error('Supabase belum dikonfigurasi di .env.local') };
+    return { error: new Error('Supabase belum dikonfigurasi di .env.local') };
   }
 
-  const { data, error } = await supabase.auth.signUp({
+  const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
     email: email.trim().toLowerCase(),
-    password,
+    options: {
+      emailRedirectTo: redirectTo,
+    },
   });
 
-  return { user: data.user, error };
+  return { error };
 }
 
 /**

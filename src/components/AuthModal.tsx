@@ -12,11 +12,18 @@ import {
   LogOut, 
   UploadCloud,
   Eye,
-  EyeOff
+  EyeOff,
+  MailCheck,
+  Send,
+  ArrowLeft,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
 import { 
   signInWithEmailPassword, 
   signUpWithEmailPassword, 
+  verifyEmailOtp,
+  resendConfirmationEmail,
   signOutAuth 
 } from '@/lib/supabase';
 import { syncLocalDataToSupabase } from '@/lib/project-service';
@@ -29,6 +36,8 @@ interface AuthModalProps {
   onSignedOut: () => void;
 }
 
+type AuthView = 'signin' | 'signup' | 'confirm_pending';
+
 export function AuthModal({
   isOpen,
   onClose,
@@ -36,12 +45,14 @@ export function AuthModal({
   onAuthSuccess,
   onSignedOut,
 }: AuthModalProps) {
-  const [mode, setMode] = React.useState<'signin' | 'signup'>('signin');
+  const [view, setView] = React.useState<AuthView>('signin');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [otpToken, setOtpToken] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSyncing, setIsSyncing] = React.useState(false);
+  const [isResending, setIsResending] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
   const [successMsg, setSuccessMsg] = React.useState<string | null>(null);
 
@@ -49,14 +60,18 @@ export function AuthModal({
     if (isOpen) {
       setErrorMsg(null);
       setSuccessMsg(null);
+      setOtpToken('');
       if (currentUserEmail) {
         setEmail(currentUserEmail);
+      } else {
+        setView('signin');
       }
     }
   }, [isOpen, currentUserEmail]);
 
   if (!isOpen) return null;
 
+  // Handle Form Submit: Sign In or Sign Up
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -75,30 +90,90 @@ export function AuthModal({
 
     setIsLoading(true);
 
-    if (mode === 'signup') {
-      const { user, error } = await signUpWithEmailPassword(cleanEmail, password);
+    if (view === 'signup') {
+      // 1. REGISTER NEW ACCOUNT
+      const { user, session, needsConfirmation, error } = await signUpWithEmailPassword(cleanEmail, password);
       setIsLoading(false);
 
       if (error) {
         setErrorMsg(`Gagal mendaftar: ${error.message}`);
-      } else if (user) {
+        return;
+      }
+
+      if (needsConfirmation) {
+        // MUST CONFIRM FIRST: DO NOT LOG IN AUTOMATICALLY
+        setView('confirm_pending');
+        setSuccessMsg(`Tautan konfirmasi telah dikirim ke ${cleanEmail}. Buka email Anda untuk konfirmasi.`);
+      } else if (session && user) {
+        // Email confirmation is disabled on Supabase
         const registeredEmail = user.email || cleanEmail;
-        setSuccessMsg('Akun berhasil dibuat dan diamankan!');
+        setSuccessMsg('Akun berhasil dibuat dan terhubung!');
         onAuthSuccess(registeredEmail);
-        setTimeout(() => onClose(), 900);
+        setTimeout(() => onClose(), 800);
       }
     } else {
-      const { user, error } = await signInWithEmailPassword(cleanEmail, password);
+      // 2. SIGN IN TO EXISTING ACCOUNT
+      const { user, session, isNotConfirmed, error } = await signInWithEmailPassword(cleanEmail, password);
       setIsLoading(false);
 
       if (error) {
-        setErrorMsg(`Gagal masuk: ${error.message}`);
-      } else if (user) {
+        if (isNotConfirmed) {
+          setErrorMsg('⚠️ Akun ini belum dikonfirmasi! Silakan periksa inbox email Anda dan klik tautan konfirmasi sebelum masuk.');
+        } else {
+          setErrorMsg(`Gagal masuk: ${error.message}`);
+        }
+        return;
+      }
+
+      if (session && user) {
         const loggedInEmail = user.email || cleanEmail;
         setSuccessMsg('Berhasil masuk ke akun terproteksi!');
         onAuthSuccess(loggedInEmail);
         setTimeout(() => onClose(), 800);
       }
+    }
+  };
+
+  // Handle OTP Token verification (if email provider sent OTP code)
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpToken.trim()) return;
+
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    setIsLoading(true);
+
+    const cleanEmail = email.trim().toLowerCase();
+    const { user, error } = await verifyEmailOtp(cleanEmail, otpToken.trim());
+    setIsLoading(false);
+
+    if (error) {
+      setErrorMsg(`Token tidak valid atau kedaluwarsa: ${error.message}`);
+      return;
+    }
+
+    if (user) {
+      const verifiedEmail = user.email || cleanEmail;
+      setSuccessMsg('Email berhasil dikonfirmasi dan akun kini aktif!');
+      onAuthSuccess(verifiedEmail);
+      setTimeout(() => onClose(), 900);
+    }
+  };
+
+  // Resend confirmation email
+  const handleResend = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) return;
+
+    setIsResending(true);
+    setErrorMsg(null);
+    const { error } = await resendConfirmationEmail(cleanEmail);
+    setIsResending(false);
+
+    if (error) {
+      setErrorMsg(`Gagal mengirim ulang: ${error.message}`);
+    } else {
+      setSuccessMsg(`Email konfirmasi baru telah dikirimkan ke ${cleanEmail}.`);
     }
   };
 
@@ -133,18 +208,26 @@ export function AuthModal({
         <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
           <div className="flex items-center gap-2.5">
             <div className="h-9 w-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-              <ShieldCheck className="h-4.5 w-4.5" />
+              {view === 'confirm_pending' ? (
+                <MailCheck className="h-4.5 w-4.5 text-amber-400" />
+              ) : (
+                <ShieldCheck className="h-4.5 w-4.5" />
+              )}
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
                 {currentUserEmail
                   ? 'Akun Terverifikasi'
-                  : mode === 'signin'
-                  ? 'Masuk dengan Email & Sandi'
+                  : view === 'confirm_pending'
+                  ? 'Konfirmasi Email Diperlukan'
+                  : view === 'signin'
+                  ? 'Masuk ke Akun'
                   : 'Daftar Akun Baru'}
               </h2>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Autentikasi aman terenkripsi via Supabase
+                {view === 'confirm_pending'
+                  ? 'Verifikasi email sebelum akun dapat terhubung'
+                  : 'Autentikasi aman terenkripsi via Supabase'}
               </p>
             </div>
           </div>
@@ -156,13 +239,13 @@ export function AuthModal({
           </button>
         </div>
 
-        {/* ALREADY LOGGED IN STATE */}
+        {/* 1. ALREADY LOGGED IN STATE */}
         {currentUserEmail ? (
           <div className="mt-5 space-y-4">
             <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20 text-xs text-emerald-300">
               <div className="flex items-center gap-2 font-bold text-sm text-emerald-400 mb-1">
                 <CheckCircle2 className="h-4 w-4" />
-                <span>Akun Terproteksi Kata Sandi</span>
+                <span>Akun Terverifikasi & Terproteksi</span>
               </div>
               <p className="text-emerald-200/80 leading-relaxed">
                 Anda terhubung sebagai <strong className="font-mono text-emerald-300">{currentUserEmail}</strong>. Semua progres, task, dan logbook dienkripsi dan disinkronkan secara aman.
@@ -185,8 +268,8 @@ export function AuthModal({
                 </span>
               </div>
               <div className="flex justify-between items-center text-zinc-400">
-                <span>Metode Proteksi:</span>
-                <span className="text-zinc-300 font-mono">Email & Kata Sandi</span>
+                <span>Status Email:</span>
+                <span className="text-emerald-400 font-medium">Terkonfirmasi & Sah</span>
               </div>
             </div>
 
@@ -212,13 +295,112 @@ export function AuthModal({
               </button>
             </div>
           </div>
+        ) : view === 'confirm_pending' ? (
+          /* 2. CONFIRMATION PENDING SCREEN (MANDATORY VERIFICATION) */
+          <div className="mt-5 space-y-4 animate-fade-in">
+            <div className="text-center py-2">
+              <div className="h-14 w-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto mb-3 text-amber-400 shadow-lg shadow-amber-500/10">
+                <MailCheck className="h-7 w-7" />
+              </div>
+              <h3 className="text-base font-bold text-white">Periksa Email Anda</h3>
+              <p className="text-xs text-zinc-400 mt-1 max-w-xs mx-auto leading-relaxed">
+                Tautan verifikasi telah dikirimkan ke:
+              </p>
+              <div className="mt-2 inline-block px-3 py-1 rounded-lg bg-zinc-800 font-mono text-xs font-semibold text-amber-300 border border-zinc-700">
+                {email}
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-300 space-y-2 leading-relaxed">
+              <div className="flex items-start gap-2">
+                <span className="h-5 w-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
+                  1
+                </span>
+                <span>Buka inbox atau folder spam di email Anda.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="h-5 w-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
+                  2
+                </span>
+                <span>Klik tautan <strong>Confirm your email</strong> pada pesan dari Supabase.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="h-5 w-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
+                  3
+                </span>
+                <span>Setelah terkonfirmasi, Anda dapat langsung masuk ke web app.</span>
+              </div>
+            </div>
+
+            {/* Optional OTP Code input */}
+            <form onSubmit={handleVerifyOtp} className="pt-2">
+              <label className="block text-[11px] text-zinc-400 mb-1">
+                Atau masukkan kode token verifikasi 6-digit (jika ada):
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Kode 6-digit"
+                  value={otpToken}
+                  onChange={(e) => setOtpToken(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-950 text-white font-mono text-xs text-center tracking-widest uppercase focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !otpToken.trim()}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold disabled:opacity-40 transition-all"
+                >
+                  {isLoading ? '...' : 'Verifikasi'}
+                </button>
+              </div>
+            </form>
+
+            {/* Resend button */}
+            <div className="flex items-center justify-between pt-2 text-xs border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={isResending}
+                className="text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors"
+              >
+                <RefreshCw className={`h-3 w-3 ${isResending ? 'animate-spin' : ''}`} />
+                <span>{isResending ? 'Mengirim...' : 'Kirim Ulang Email'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setView('signin');
+                  setErrorMsg(null);
+                  setSuccessMsg(null);
+                }}
+                className="text-indigo-400 hover:text-indigo-300 font-semibold"
+              >
+                Sudah Konfirmasi? Masuk →
+              </button>
+            </div>
+          </div>
         ) : (
-          /* FORM: EMAIL & PASSWORD ONLY */
+          /* 3. SIGN IN / SIGN UP FORM */
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
             {errorMsg && (
               <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-950/25 text-xs text-rose-300 flex items-start gap-2.5 animate-fade-in">
                 <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
-                <div className="leading-relaxed">{errorMsg}</div>
+                <div className="leading-relaxed">
+                  {errorMsg}
+                  {errorMsg.includes('belum dikonfirmasi') && (
+                    <div className="mt-2 pt-2 border-t border-rose-500/20">
+                      <button
+                        type="button"
+                        onClick={handleResend}
+                        disabled={isResending}
+                        className="text-white bg-rose-900/50 hover:bg-rose-900/80 px-2.5 py-1 rounded-lg text-[11px] font-medium border border-rose-500/30"
+                      >
+                        {isResending ? 'Mengirim...' : 'Kirim Ulang Email Konfirmasi'}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -275,17 +457,18 @@ export function AuthModal({
             {/* Mode Switcher */}
             <div className="flex items-center justify-between text-xs pt-1">
               <span className="text-zinc-400">
-                {mode === 'signin' ? 'Belum punya akun?' : 'Sudah punya akun?'}
+                {view === 'signin' ? 'Belum punya akun?' : 'Sudah punya akun?'}
               </span>
               <button
                 type="button"
                 onClick={() => {
-                  setMode(mode === 'signin' ? 'signup' : 'signin');
+                  setView(view === 'signin' ? 'signup' : 'signin');
                   setErrorMsg(null);
+                  setSuccessMsg(null);
                 }}
                 className="text-indigo-400 hover:text-indigo-300 font-semibold"
               >
-                {mode === 'signin' ? 'Daftar Akun Baru' : 'Masuk (Sign In)'}
+                {view === 'signin' ? 'Daftar Akun Baru' : 'Masuk ke Akun'}
               </button>
             </div>
 
@@ -297,10 +480,16 @@ export function AuthModal({
             >
               {isLoading
                 ? 'Memproses...'
-                : mode === 'signin'
+                : view === 'signin'
                 ? 'Masuk ke Akun'
-                : 'Buat & Amankan Akun'}
+                : 'Daftar Akun (Kirim Konfirmasi)'}
             </button>
+
+            {view === 'signup' && (
+              <p className="text-[11px] text-zinc-500 text-center leading-relaxed">
+                *Tautan konfirmasi akan dikirimkan ke email Anda. Akun harus dikonfirmasi terlebih dahulu sebelum dapat terhubung.
+              </p>
+            )}
           </form>
         )}
       </div>

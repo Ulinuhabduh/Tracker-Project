@@ -118,20 +118,27 @@ export default function Home() {
     if (isSupabaseConfigured()) {
       // Check current auth session
       supabase.auth.getUser().then(({ data }) => {
-        if (data?.user?.email) {
+        if (data?.user?.email && (data.user.email_confirmed_at || (data.user as any).confirmed_at)) {
           const verifiedEmail = data.user.email.toLowerCase();
           setUserEmail(verifiedEmail);
           setUserEmailState(verifiedEmail);
         }
       });
 
-      // Listen for auth state changes (login / logout)
+      // Listen for auth state changes (login / logout / confirmation redirect)
       const { data: authListener } = supabase.auth.onAuthStateChange(
-        async (_event, session) => {
-          if (session?.user?.email) {
+        async (event, session) => {
+          if (session?.user?.email && (session.user.email_confirmed_at || (session.user as any).confirmed_at)) {
             const verifiedEmail = session.user.email.toLowerCase();
             setUserEmail(verifiedEmail);
             setUserEmailState(verifiedEmail);
+            loadProjects();
+            if (event === 'SIGNED_IN') {
+              addToast('success', `Akun terkonfirmasi & aktif: ${verifiedEmail}`);
+            }
+          } else if (event === 'SIGNED_OUT') {
+            clearUserEmail();
+            setUserEmailState('');
             loadProjects();
           }
         }
