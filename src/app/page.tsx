@@ -12,6 +12,7 @@ import {
   Layers,
   Database,
   Cloud,
+  ShieldCheck,
   Trash2
 } from 'lucide-react';
 import { 
@@ -36,14 +37,15 @@ import {
   deleteLogbook,
   resetToInitialSeed 
 } from '@/lib/project-service';
-import { getUserEmail } from '@/lib/user-session';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { getUserEmail, setUserEmail, clearUserEmail } from '@/lib/user-session';
 import { Header } from '@/components/Header';
 import { StatsOverview } from '@/components/StatsOverview';
 import { ProjectCard } from '@/components/ProjectCard';
 import { ProjectModal } from '@/components/ProjectModal';
 import { ProjectDetail } from '@/components/ProjectDetail';
 import { SupabaseConfigModal } from '@/components/SupabaseConfigModal';
-import { EmailSyncModal } from '@/components/EmailSyncModal';
+import { AuthModal } from '@/components/AuthModal';
 import { ClearDataModal } from '@/components/ClearDataModal';
 import { ToastContainer, ToastMessage } from '@/components/Toast';
 
@@ -63,7 +65,7 @@ export default function Home() {
   const [isProjectModalOpen, setIsProjectModalOpen] = React.useState(false);
   const [projectToEdit, setProjectToEdit] = React.useState<Project | null>(null);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = React.useState(false);
-  const [isEmailSyncModalOpen, setIsEmailSyncModalOpen] = React.useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = React.useState(false);
   const [isClearDataModalOpen, setIsClearDataModalOpen] = React.useState(false);
 
   // Toast & Loading
@@ -107,9 +109,38 @@ export default function Home() {
     }
   }, []);
 
+  // Check Supabase Auth state on mount
   React.useEffect(() => {
-    setUserEmailState(getUserEmail());
+    const saved = getUserEmail();
+    setUserEmailState(saved);
     loadProjects();
+
+    if (isSupabaseConfigured()) {
+      // Check current auth session
+      supabase.auth.getUser().then(({ data }) => {
+        if (data?.user?.email) {
+          const verifiedEmail = data.user.email.toLowerCase();
+          setUserEmail(verifiedEmail);
+          setUserEmailState(verifiedEmail);
+        }
+      });
+
+      // Listen for auth state changes (e.g. after Google redirect)
+      const { data: authListener } = supabase.auth.onAuthStateChange(
+        async (_event, session) => {
+          if (session?.user?.email) {
+            const verifiedEmail = session.user.email.toLowerCase();
+            setUserEmail(verifiedEmail);
+            setUserEmailState(verifiedEmail);
+            loadProjects();
+          }
+        }
+      );
+
+      return () => {
+        authListener.subscription.unsubscribe();
+      };
+    }
   }, [loadProjects]);
 
   React.useEffect(() => {
@@ -120,15 +151,19 @@ export default function Home() {
     }
   }, [selectedProjectId, loadDetail]);
 
-  // Handle email changed for multi-device sync
-  const handleEmailChanged = (newEmail: string) => {
-    setUserEmailState(newEmail);
+  // Auth Handlers
+  const handleAuthSuccess = (email: string) => {
+    setUserEmail(email);
+    setUserEmailState(email);
     loadProjects();
-    if (newEmail) {
-      addToast('success', `Akun disinkronkan ke email: ${newEmail}`);
-    } else {
-      addToast('info', 'Kaitan email telah dicopot.');
-    }
+    addToast('success', `Berhasil masuk & terproteksi: ${email}`);
+  };
+
+  const handleSignedOut = () => {
+    clearUserEmail();
+    setUserEmailState('');
+    loadProjects();
+    addToast('info', 'Anda telah keluar dari akun.');
   };
 
   // Handle data completely wiped
@@ -308,7 +343,7 @@ export default function Home() {
           setIsProjectModalOpen(true);
         }}
         onOpenSupabaseConfig={() => setIsSupabaseModalOpen(true)}
-        onOpenEmailSync={() => setIsEmailSyncModalOpen(true)}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onResetData={handleResetData}
         onOpenClearData={() => setIsClearDataModalOpen(true)}
         userEmail={userEmail}
@@ -363,27 +398,27 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Multi-Device Email Banner if not configured */}
+              {/* Secure Auth Banner if not authenticated */}
               {!userEmail && (
                 <div 
-                  onClick={() => setIsEmailSyncModalOpen(true)}
-                  className="mb-6 p-3.5 sm:p-4 rounded-2xl border border-indigo-500/20 bg-indigo-950/20 hover:bg-indigo-950/30 cursor-pointer text-xs text-indigo-300 flex items-center justify-between gap-3 transition-all group"
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="mb-6 p-3.5 sm:p-4 rounded-2xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/40 via-zinc-900 to-indigo-950/30 hover:border-indigo-500/50 cursor-pointer text-xs text-indigo-300 flex items-center justify-between gap-3 transition-all group"
                 >
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
-                      <Cloud className="h-4 w-4" />
+                      <ShieldCheck className="h-4.5 w-4.5" />
                     </div>
                     <div>
                       <span className="font-bold text-white block">
-                        Ingin akses proyek Anda dari HP / laptop lain?
+                        Ingin data Anda terproteksi aman antar-device?
                       </span>
                       <p className="text-indigo-200/80 text-[11px] mt-0.5">
-                        Hubungkan alamat email Anda untuk mengaktifkan auto async database ke seluruh perangkat.
+                        Masuk dengan Google (Gmail) atau Email & Kata Sandi agar hanya akun Anda yang dapat mengakses proyek.
                       </p>
                     </div>
                   </div>
                   <span className="text-xs font-semibold text-indigo-400 group-hover:text-white shrink-0 underline">
-                    Atur Sekarang →
+                    Masuk Sekarang →
                   </span>
                 </div>
               )}
@@ -573,10 +608,12 @@ export default function Home() {
         }}
       />
 
-      <EmailSyncModal
-        isOpen={isEmailSyncModalOpen}
-        onClose={() => setIsEmailSyncModalOpen(false)}
-        onEmailChanged={handleEmailChanged}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        currentUserEmail={userEmail}
+        onAuthSuccess={handleAuthSuccess}
+        onSignedOut={handleSignedOut}
       />
 
       <ClearDataModal

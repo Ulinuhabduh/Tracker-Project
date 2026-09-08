@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -11,14 +11,15 @@ export const isConfigured = Boolean(
   !supabaseAnonKey.includes('your-anon')
 );
 
-// Directly create the Supabase client
+// Directly create the Supabase client with active session persistence
 export const supabase: SupabaseClient = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseAnonKey || 'placeholder-anon-key',
   {
     auth: {
-      persistSession: false,
-      autoRefreshToken: false,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
     },
   }
 );
@@ -59,5 +60,85 @@ export async function testSupabaseConnection(): Promise<{ success: boolean; mess
       success: false,
       message: `Gagal menghubungi Supabase: ${message}`,
     };
+  }
+}
+
+// ==============================================================================
+// 🔐 SECURE AUTHENTICATION HELPERS (GMAIL OAUTH & EMAIL/PASSWORD)
+// ==============================================================================
+
+/**
+ * Login via Google / Gmail OAuth
+ */
+export async function signInWithGoogle(): Promise<{ error: Error | null }> {
+  if (!isConfigured) {
+    return { error: new Error('Supabase belum dikonfigurasi di .env.local') };
+  }
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+    },
+  });
+
+  return { error };
+}
+
+/**
+ * Login via Email & Password
+ */
+export async function signInWithEmailPassword(
+  email: string,
+  password: string
+): Promise<{ user: User | null; error: Error | null }> {
+  if (!isConfigured) {
+    return { user: null, error: new Error('Supabase belum dikonfigurasi di .env.local') };
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim().toLowerCase(),
+    password,
+  });
+
+  return { user: data.user, error };
+}
+
+/**
+ * Register via Email & Password
+ */
+export async function signUpWithEmailPassword(
+  email: string,
+  password: string
+): Promise<{ user: User | null; error: Error | null }> {
+  if (!isConfigured) {
+    return { user: null, error: new Error('Supabase belum dikonfigurasi di .env.local') };
+  }
+
+  const { data, error } = await supabase.auth.signUp({
+    email: email.trim().toLowerCase(),
+    password,
+  });
+
+  return { user: data.user, error };
+}
+
+/**
+ * Sign out current user
+ */
+export async function signOutAuth(): Promise<{ error: Error | null }> {
+  const { error } = await supabase.auth.signOut();
+  return { error };
+}
+
+/**
+ * Get current authenticated user
+ */
+export async function getAuthUser(): Promise<User | null> {
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data.user;
+  } catch {
+    return null;
   }
 }

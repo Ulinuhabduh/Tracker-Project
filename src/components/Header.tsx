@@ -6,9 +6,9 @@ import {
   Plus, 
   RefreshCw, 
   Layers, 
-  Cloud, 
-  Trash2,
-  SlidersHorizontal 
+  ShieldCheck,
+  Lock,
+  Trash2
 } from 'lucide-react';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { getUserEmail } from '@/lib/user-session';
@@ -16,7 +16,7 @@ import { getUserEmail } from '@/lib/user-session';
 interface HeaderProps {
   onNewProject: () => void;
   onOpenSupabaseConfig: () => void;
-  onOpenEmailSync: () => void;
+  onOpenAuthModal: () => void;
   onResetData: () => void;
   onOpenClearData: () => void;
   userEmail?: string;
@@ -25,7 +25,7 @@ interface HeaderProps {
 export function Header({
   onNewProject,
   onOpenSupabaseConfig,
-  onOpenEmailSync,
+  onOpenAuthModal,
   onResetData,
   onOpenClearData,
   userEmail,
@@ -61,19 +61,23 @@ export function Header({
 
         {/* Right Actions */}
         <div className="flex items-center gap-2 sm:gap-2.5">
-          {/* Email Multi-Device Auto-Sync Button */}
+          {/* Secure Auth Account Button (Gmail OAuth / Email) */}
           <button
-            onClick={onOpenEmailSync}
+            onClick={onOpenAuthModal}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
               email
-                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20'
-                : 'bg-zinc-900 border-dashed border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
+                : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20'
             }`}
-            title="Auto-Sync Multi-Device via Email"
+            title={email ? `Terotentikasi sebagai ${email}` : 'Masuk dengan Google / Email untuk Keamanan Data'}
           >
-            <Cloud className={`h-3.5 w-3.5 ${email ? 'text-indigo-400' : 'text-zinc-500'}`} />
+            {email ? (
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+            ) : (
+              <Lock className="h-3.5 w-3.5 text-indigo-400" />
+            )}
             <span className="max-w-[120px] sm:max-w-[160px] truncate">
-              {email ? email : 'Hubungkan Email Sync'}
+              {email ? email : 'Koneksikan Akun (Auth)'}
             </span>
             {email && (
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -117,7 +121,7 @@ export function Header({
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
 
-          {/* Hapus Semua Data (Danger Zone Trigger) */}
+          {/* Hapus Semua Data (Danger Zone) */}
           <button
             onClick={onOpenClearData}
             className="p-2 rounded-lg border border-rose-500/20 bg-rose-950/20 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 hover:border-rose-500/40 transition-colors"
