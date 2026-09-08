@@ -1,4 +1,4 @@
-import { getSupabaseClient, isSupabaseConfigured } from './supabase';
+import { supabase, isSupabaseConfigured } from './supabase';
 import {
   Project,
   Milestone,
@@ -20,7 +20,6 @@ const STORAGE_KEYS = {
   LOGBOOKS: 'track_progress_logbooks',
 };
 
-// Helper to access LocalStorage safely
 function getLocal<T>(key: string, defaultVal: T[]): T[] {
   if (typeof window === 'undefined') return defaultVal;
   try {
@@ -45,7 +44,6 @@ function setLocal<T>(key: string, val: T[]): void {
   }
 }
 
-// Generate random UUID if crypto.randomUUID is not available
 function generateId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -57,10 +55,9 @@ function generateId(): string {
 // PROJECTS
 // ==========================================
 export async function fetchProjects(): Promise<Project[]> {
-  const client = getSupabaseClient();
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await client
+      const { data, error } = await supabase
         .from('projects')
         .select('*')
         .order('created_at', { ascending: false });
@@ -68,24 +65,26 @@ export async function fetchProjects(): Promise<Project[]> {
       if (!error && data) {
         return data as Project[];
       }
-      console.warn('Supabase fetchProjects warning:', error?.message);
+      if (error) {
+        console.warn('Supabase fetchProjects notice:', error.message);
+      }
     } catch (err) {
-      console.warn('Falling back to local storage for fetchProjects:', err);
+      console.warn('Supabase fetchProjects exception:', err);
     }
   }
 
+  // Fallback when .env.local not configured yet
   return getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
 }
 
 export async function fetchProjectDetail(id: string): Promise<ProjectDetailData | null> {
-  const client = getSupabaseClient();
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
       const [projRes, msRes, taskRes, logRes] = await Promise.all([
-        client.from('projects').select('*').eq('id', id).single(),
-        client.from('milestones').select('*').eq('project_id', id).order('created_at', { ascending: true }),
-        client.from('tasks').select('*').eq('project_id', id).order('created_at', { ascending: true }),
-        client.from('logbooks').select('*').eq('project_id', id).order('created_at', { ascending: false }),
+        supabase.from('projects').select('*').eq('id', id).single(),
+        supabase.from('milestones').select('*').eq('project_id', id).order('created_at', { ascending: true }),
+        supabase.from('tasks').select('*').eq('project_id', id).order('created_at', { ascending: true }),
+        supabase.from('logbooks').select('*').eq('project_id', id).order('created_at', { ascending: false }),
       ]);
 
       if (!projRes.error && projRes.data) {
@@ -97,11 +96,11 @@ export async function fetchProjectDetail(id: string): Promise<ProjectDetailData 
         };
       }
     } catch (err) {
-      console.warn('Falling back to local for fetchProjectDetail:', err);
+      console.warn('Supabase fetchProjectDetail exception:', err);
     }
   }
 
-  // Local fallback
+  // Fallback
   const projects = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
   const project = projects.find((p) => p.id === id);
   if (!project) return null;
@@ -123,7 +122,7 @@ export async function saveProject(projectData: Partial<Project>): Promise<Projec
   const now = new Date().toISOString();
   const id = projectData.id || generateId();
 
-  const newProject: Project = {
+  const projectRecord: Project = {
     id,
     title: projectData.title?.trim() || 'Untitled Project',
     description: projectData.description?.trim() || '',
@@ -138,23 +137,24 @@ export async function saveProject(projectData: Partial<Project>): Promise<Projec
     updated_at: now,
   };
 
-  const client = getSupabaseClient();
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
       if (isNew) {
-        const { data, error } = await client.from('projects').insert(newProject).select().single();
+        const { data, error } = await supabase.from('projects').insert(projectRecord).select().single();
         if (!error && data) return data as Project;
+        if (error) console.error('Supabase saveProject insert error:', error.message);
       } else {
-        const { data, error } = await client
+        const { data, error } = await supabase
           .from('projects')
-          .update(newProject)
+          .update(projectRecord)
           .eq('id', id)
           .select()
           .single();
         if (!error && data) return data as Project;
+        if (error) console.error('Supabase saveProject update error:', error.message);
       }
     } catch (err) {
-      console.warn('Supabase saveProject error, writing to local:', err);
+      console.error('Supabase saveProject exception:', err);
     }
   }
 
@@ -162,28 +162,26 @@ export async function saveProject(projectData: Partial<Project>): Promise<Projec
   const list = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
   let updatedList: Project[];
   if (isNew) {
-    updatedList = [newProject, ...list];
+    updatedList = [projectRecord, ...list];
   } else {
-    updatedList = list.map((p) => (p.id === id ? newProject : p));
+    updatedList = list.map((p) => (p.id === id ? projectRecord : p));
   }
   setLocal(STORAGE_KEYS.PROJECTS, updatedList);
-  return newProject;
+  return projectRecord;
 }
 
 export async function deleteProject(id: string): Promise<boolean> {
-  const client = getSupabaseClient();
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
-      await client.from('projects').delete().eq('id', id);
+      await supabase.from('projects').delete().eq('id', id);
     } catch (err) {
-      console.warn('Supabase deleteProject error:', err);
+      console.error('Supabase deleteProject exception:', err);
     }
   }
 
   const list = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
   setLocal(STORAGE_KEYS.PROJECTS, list.filter((p) => p.id !== id));
 
-  // Also cascade clean local milestones, tasks, logbooks
   const ms = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
   setLocal(STORAGE_KEYS.MILESTONES, ms.filter((m) => m.project_id !== id));
 
@@ -197,7 +195,7 @@ export async function deleteProject(id: string): Promise<boolean> {
 }
 
 // ==========================================
-// TASKS & RECALCULATE PROJECT PROGRESS
+// TASKS & AUTOMATIC PROGRESS RECALCULATION
 // ==========================================
 export async function saveTask(taskData: Partial<Task>): Promise<Task> {
   const isNew = !taskData.id;
@@ -215,16 +213,15 @@ export async function saveTask(taskData: Partial<Task>): Promise<Task> {
     created_at: taskData.created_at || now,
   };
 
-  const client = getSupabaseClient();
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
       if (isNew) {
-        await client.from('tasks').insert(task);
+        await supabase.from('tasks').insert(task);
       } else {
-        await client.from('tasks').update(task).eq('id', id);
+        await supabase.from('tasks').update(task).eq('id', id);
       }
     } catch (err) {
-      console.warn('Supabase saveTask error:', err);
+      console.error('Supabase saveTask exception:', err);
     }
   }
 
@@ -237,19 +234,18 @@ export async function saveTask(taskData: Partial<Task>): Promise<Task> {
   }
   setLocal(STORAGE_KEYS.TASKS, updatedTasks);
 
-  // Auto recalculate progress for project
+  // Recalculate progress for project
   await recalculateProjectProgress(task.project_id);
 
   return task;
 }
 
 export async function deleteTask(id: string, projectId: string): Promise<boolean> {
-  const client = getSupabaseClient();
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
-      await client.from('tasks').delete().eq('id', id);
+      await supabase.from('tasks').delete().eq('id', id);
     } catch (err) {
-      console.warn('Supabase deleteTask error:', err);
+      console.error('Supabase deleteTask exception:', err);
     }
   }
 
@@ -262,14 +258,13 @@ export async function deleteTask(id: string, projectId: string): Promise<boolean
 
 export async function recalculateProjectProgress(projectId: string): Promise<number> {
   let projectTasks: Task[] = [];
-  const client = getSupabaseClient();
 
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
-      const { data } = await client.from('tasks').select('*').eq('project_id', projectId);
+      const { data } = await supabase.from('tasks').select('*').eq('project_id', projectId);
       if (data) projectTasks = data as Task[];
     } catch (err) {
-      console.warn('recalculateProjectProgress error:', err);
+      console.warn('recalculateProjectProgress Supabase notice:', err);
     }
   }
 
@@ -283,7 +278,6 @@ export async function recalculateProjectProgress(projectId: string): Promise<num
   const completed = projectTasks.filter((t) => t.status === 'done').length;
   const progressPercent = Math.round((completed / projectTasks.length) * 100);
 
-  // Update status if completed or started
   let statusUpdate: Project['status'] | undefined;
   if (progressPercent === 100) {
     statusUpdate = 'completed';
@@ -291,20 +285,19 @@ export async function recalculateProjectProgress(projectId: string): Promise<num
     statusUpdate = 'in_progress';
   }
 
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
       const payload: Record<string, unknown> = {
         progress_percent: progressPercent,
         updated_at: new Date().toISOString(),
       };
       if (statusUpdate) payload.status = statusUpdate;
-      await client.from('projects').update(payload).eq('id', projectId);
+      await supabase.from('projects').update(payload).eq('id', projectId);
     } catch (err) {
-      console.warn('Failed updating project progress on Supabase:', err);
+      console.warn('Supabase update progress notice:', err);
     }
   }
 
-  // Update local
   const projects = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
   const updatedProjects = projects.map((p) => {
     if (p.id === projectId) {
@@ -339,16 +332,15 @@ export async function saveMilestone(milestoneData: Partial<Milestone>): Promise<
     created_at: milestoneData.created_at || now,
   };
 
-  const client = getSupabaseClient();
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
       if (isNew) {
-        await client.from('milestones').insert(milestone);
+        await supabase.from('milestones').insert(milestone);
       } else {
-        await client.from('milestones').update(milestone).eq('id', id);
+        await supabase.from('milestones').update(milestone).eq('id', id);
       }
     } catch (err) {
-      console.warn('Supabase saveMilestone error:', err);
+      console.error('Supabase saveMilestone exception:', err);
     }
   }
 
@@ -364,12 +356,11 @@ export async function saveMilestone(milestoneData: Partial<Milestone>): Promise<
 }
 
 export async function deleteMilestone(id: string): Promise<boolean> {
-  const client = getSupabaseClient();
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
-      await client.from('milestones').delete().eq('id', id);
+      await supabase.from('milestones').delete().eq('id', id);
     } catch (err) {
-      console.warn('Supabase deleteMilestone error:', err);
+      console.error('Supabase deleteMilestone exception:', err);
     }
   }
 
@@ -379,7 +370,7 @@ export async function deleteMilestone(id: string): Promise<boolean> {
 }
 
 // ==========================================
-// LOGBOOKS (WITH LIVE PREVIEW SUPPORT)
+// LOGBOOKS (WITH LIVE PREVIEW)
 // ==========================================
 export async function saveLogbook(logData: Partial<LogbookEntry>): Promise<LogbookEntry> {
   const isNew = !logData.id;
@@ -399,23 +390,24 @@ export async function saveLogbook(logData: Partial<LogbookEntry>): Promise<Logbo
     updated_at: now,
   };
 
-  const client = getSupabaseClient();
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
       if (isNew) {
-        const { data, error } = await client.from('logbooks').insert(entry).select().single();
+        const { data, error } = await supabase.from('logbooks').insert(entry).select().single();
         if (!error && data) return data as LogbookEntry;
+        if (error) console.error('Supabase saveLogbook insert error:', error.message);
       } else {
-        const { data, error } = await client
+        const { data, error } = await supabase
           .from('logbooks')
           .update(entry)
           .eq('id', id)
           .select()
           .single();
         if (!error && data) return data as LogbookEntry;
+        if (error) console.error('Supabase saveLogbook update error:', error.message);
       }
     } catch (err) {
-      console.warn('Supabase saveLogbook error:', err);
+      console.error('Supabase saveLogbook exception:', err);
     }
   }
 
@@ -431,12 +423,11 @@ export async function saveLogbook(logData: Partial<LogbookEntry>): Promise<Logbo
 }
 
 export async function deleteLogbook(id: string): Promise<boolean> {
-  const client = getSupabaseClient();
-  if (client) {
+  if (isSupabaseConfigured()) {
     try {
-      await client.from('logbooks').delete().eq('id', id);
+      await supabase.from('logbooks').delete().eq('id', id);
     } catch (err) {
-      console.warn('Supabase deleteLogbook error:', err);
+      console.error('Supabase deleteLogbook exception:', err);
     }
   }
 
@@ -445,7 +436,6 @@ export async function deleteLogbook(id: string): Promise<boolean> {
   return true;
 }
 
-// Reset data to initial mock seed (useful for testing)
 export function resetToInitialSeed(): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(INITIAL_PROJECTS));
