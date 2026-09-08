@@ -11,7 +11,7 @@ export const isConfigured = Boolean(
   !supabaseAnonKey.includes('your-anon')
 );
 
-// Directly create the Supabase client with active session persistence
+// Supabase client with active session persistence
 export const supabase: SupabaseClient = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseAnonKey || 'placeholder-anon-key',
@@ -64,26 +64,8 @@ export async function testSupabaseConnection(): Promise<{ success: boolean; mess
 }
 
 // ==============================================================================
-// 🔐 SECURE AUTHENTICATION HELPERS (GMAIL OAUTH & EMAIL/PASSWORD)
+// 🔐 SECURE EMAIL & PASSWORD AUTHENTICATION
 // ==============================================================================
-
-/**
- * Login via Google / Gmail OAuth
- */
-export async function signInWithGoogle(): Promise<{ error: Error | null }> {
-  if (!isConfigured) {
-    return { error: new Error('Supabase belum dikonfigurasi di .env.local') };
-  }
-
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-    },
-  });
-
-  return { error };
-}
 
 /**
  * Login via Email & Password

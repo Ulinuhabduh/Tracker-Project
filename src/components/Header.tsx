@@ -69,7 +69,7 @@ export function Header({
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
                 : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20'
             }`}
-            title={email ? `Terotentikasi sebagai ${email}` : 'Masuk dengan Google / Email untuk Keamanan Data'}
+            title={email ? `Terotentikasi sebagai ${email}` : 'Masuk dengan Email & Kata Sandi untuk Keamanan Data'}
           >
             {email ? (
               <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />

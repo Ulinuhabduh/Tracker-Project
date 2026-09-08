@@ -125,7 +125,7 @@ export default function Home() {
         }
       });
 
-      // Listen for auth state changes (e.g. after Google redirect)
+      // Listen for auth state changes (login / logout)
       const { data: authListener } = supabase.auth.onAuthStateChange(
         async (_event, session) => {
           if (session?.user?.email) {
@@ -413,7 +413,7 @@ export default function Home() {
                         Ingin data Anda terproteksi aman antar-device?
                       </span>
                       <p className="text-indigo-200/80 text-[11px] mt-0.5">
-                        Masuk dengan Google (Gmail) atau Email & Kata Sandi agar hanya akun Anda yang dapat mengakses proyek.
+                        Masuk dengan Email & Kata Sandi agar data proyek Anda terproteksi dan tersinkronisasi aman.
                       </p>
                     </div>
                   </div>
