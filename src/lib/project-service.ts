@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import { getUserEmail } from './user-session';
 import {
   Project,
   Milestone,
@@ -52,15 +53,24 @@ function generateId(): string {
 }
 
 // ==========================================
-// PROJECTS
+// PROJECTS (WITH EMAIL FILTERING FOR MULTI-DEVICE)
 // ==========================================
 export async function fetchProjects(): Promise<Project[]> {
+  const currentEmail = getUserEmail();
+
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('projects')
         .select('*')
         .order('created_at', { ascending: false });
+
+      // If user has set an email, filter by this email or unclaimed projects
+      if (currentEmail) {
+        query = query.or(`user_email.eq.${currentEmail},user_email.eq.,user_email.is.null`);
+      }
+
+      const { data, error } = await query;
 
       if (!error && data) {
         return data as Project[];
@@ -73,8 +83,12 @@ export async function fetchProjects(): Promise<Project[]> {
     }
   }
 
-  // Fallback when .env.local not configured yet
-  return getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
+  // Fallback when .env.local not configured or offline
+  const localList = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
+  if (currentEmail) {
+    return localList.filter((p) => !p.user_email || p.user_email === currentEmail);
+  }
+  return localList;
 }
 
 export async function fetchProjectDetail(id: string): Promise<ProjectDetailData | null> {
@@ -121,9 +135,11 @@ export async function saveProject(projectData: Partial<Project>): Promise<Projec
   const isNew = !projectData.id;
   const now = new Date().toISOString();
   const id = projectData.id || generateId();
+  const userEmail = projectData.user_email || getUserEmail() || '';
 
   const projectRecord: Project = {
     id,
+    user_email: userEmail,
     title: projectData.title?.trim() || 'Untitled Project',
     description: projectData.description?.trim() || '',
     category: projectData.category?.trim() || 'General',
@@ -234,9 +250,7 @@ export async function saveTask(taskData: Partial<Task>): Promise<Task> {
   }
   setLocal(STORAGE_KEYS.TASKS, updatedTasks);
 
-  // Recalculate progress for project
   await recalculateProjectProgress(task.project_id);
-
   return task;
 }
 
@@ -370,21 +384,23 @@ export async function deleteMilestone(id: string): Promise<boolean> {
 }
 
 // ==========================================
-// LOGBOOKS (WITH LIVE PREVIEW)
+// LOGBOOKS (WITH LIVE PREVIEW & USER EMAIL)
 // ==========================================
 export async function saveLogbook(logData: Partial<LogbookEntry>): Promise<LogbookEntry> {
   const isNew = !logData.id;
   const now = new Date().toISOString();
   const id = logData.id || generateId();
+  const userEmail = logData.user_email || getUserEmail() || '';
 
   const entry: LogbookEntry = {
     id,
     project_id: logData.project_id!,
+    user_email: userEmail,
     title: logData.title?.trim() || 'Catatan Perkembangan',
     content_markdown: logData.content_markdown || '',
     log_type: logData.log_type || 'daily_update',
     blockers: logData.blockers?.trim() || '',
-    author_name: logData.author_name?.trim() || 'Project Owner',
+    author_name: logData.author_name?.trim() || userEmail.split('@')[0] || 'Project Owner',
     tags: logData.tags || [],
     created_at: logData.created_at || now,
     updated_at: now,
@@ -434,6 +450,40 @@ export async function deleteLogbook(id: string): Promise<boolean> {
   const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
   setLocal(STORAGE_KEYS.LOGBOOKS, logs.filter((l) => l.id !== id));
   return true;
+}
+
+// Push local data to Supabase under the given email
+export async function syncLocalDataToSupabase(email: string): Promise<{ success: boolean; count: number }> {
+  if (!isSupabaseConfigured() || !email) {
+    return { success: false, count: 0 };
+  }
+
+  try {
+    const localProjects = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
+    const localMilestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
+    const localTasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
+    const localLogs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
+
+    // Upsert projects with email
+    const projectsWithEmail = localProjects.map((p) => ({ ...p, user_email: email }));
+    await supabase.from('projects').upsert(projectsWithEmail);
+
+    if (localMilestones.length > 0) {
+      await supabase.from('milestones').upsert(localMilestones);
+    }
+    if (localTasks.length > 0) {
+      await supabase.from('tasks').upsert(localTasks);
+    }
+    if (localLogs.length > 0) {
+      const logsWithEmail = localLogs.map((l) => ({ ...l, user_email: email }));
+      await supabase.from('logbooks').upsert(logsWithEmail);
+    }
+
+    return { success: true, count: localProjects.length };
+  } catch (err) {
+    console.error('syncLocalDataToSupabase error:', err);
+    return { success: false, count: 0 };
+  }
 }
 
 export function resetToInitialSeed(): void {

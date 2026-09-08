@@ -1,21 +1,32 @@
 'use client';
 
 import React from 'react';
-import { Database, Plus, Sparkles, RefreshCw, Layers } from 'lucide-react';
+import { Database, Plus, RefreshCw, Layers, Cloud, Mail } from 'lucide-react';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { getUserEmail } from '@/lib/user-session';
 
 interface HeaderProps {
   onNewProject: () => void;
   onOpenSupabaseConfig: () => void;
+  onOpenEmailSync: () => void;
   onResetData: () => void;
+  userEmail?: string;
 }
 
-export function Header({ onNewProject, onOpenSupabaseConfig, onResetData }: HeaderProps) {
+export function Header({
+  onNewProject,
+  onOpenSupabaseConfig,
+  onOpenEmailSync,
+  onResetData,
+  userEmail,
+}: HeaderProps) {
   const [supabaseActive, setSupabaseActive] = React.useState(false);
+  const [email, setEmail] = React.useState('');
 
   React.useEffect(() => {
     setSupabaseActive(isSupabaseConfigured());
-  }, []);
+    setEmail(userEmail || getUserEmail());
+  }, [userEmail]);
 
   return (
     <header className="sticky top-0 z-30 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-xl">
@@ -39,7 +50,26 @@ export function Header({ onNewProject, onOpenSupabaseConfig, onResetData }: Head
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Email Multi-Device Auto-Sync Button */}
+          <button
+            onClick={onOpenEmailSync}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+              email
+                ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20'
+                : 'bg-zinc-900 border-dashed border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'
+            }`}
+            title="Auto-Sync Multi-Device via Email"
+          >
+            <Cloud className={`h-3.5 w-3.5 ${email ? 'text-indigo-400' : 'text-zinc-500'}`} />
+            <span className="max-w-[120px] sm:max-w-[160px] truncate">
+              {email ? email : 'Hubungkan Email Sync'}
+            </span>
+            {email && (
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            )}
+          </button>
+
           {/* Supabase Status Pill */}
           <button
             onClick={onOpenSupabaseConfig}
@@ -48,7 +78,7 @@ export function Header({ onNewProject, onOpenSupabaseConfig, onResetData }: Head
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
                 : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
             }`}
-            title="Kelola Koneksi Supabase Database"
+            title="Status Database Supabase (.env.local)"
           >
             <span className="relative flex h-2 w-2">
               <span
@@ -68,10 +98,10 @@ export function Header({ onNewProject, onOpenSupabaseConfig, onResetData }: Head
             </span>
           </button>
 
-          {/* Reset Demo Data (Discreet) */}
+          {/* Reset Demo Data */}
           <button
             onClick={onResetData}
-            className="p-2 rounded-lg border border-zinc-800/80 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+            className="p-2 rounded-lg border border-zinc-800/80 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors hidden sm:block"
             title="Reset Data Sample Awal"
           >
             <RefreshCw className="h-3.5 w-3.5" />
@@ -83,7 +113,7 @@ export function Header({ onNewProject, onOpenSupabaseConfig, onResetData }: Head
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition-all active:scale-95"
           >
             <Plus className="h-4 w-4" />
-            <span>Proyek Baru</span>
+            <span className="hidden xs:inline">Proyek Baru</span>
           </button>
         </div>
       </div>

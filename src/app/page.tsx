@@ -10,7 +10,8 @@ import {
   SlidersHorizontal,
   ArrowUpDown,
   Layers,
-  Database
+  Database,
+  Cloud
 } from 'lucide-react';
 import { 
   Project, 
@@ -34,18 +35,21 @@ import {
   deleteLogbook,
   resetToInitialSeed 
 } from '@/lib/project-service';
+import { getUserEmail } from '@/lib/user-session';
 import { Header } from '@/components/Header';
 import { StatsOverview } from '@/components/StatsOverview';
 import { ProjectCard } from '@/components/ProjectCard';
 import { ProjectModal } from '@/components/ProjectModal';
 import { ProjectDetail } from '@/components/ProjectDetail';
 import { SupabaseConfigModal } from '@/components/SupabaseConfigModal';
+import { EmailSyncModal } from '@/components/EmailSyncModal';
 import { ToastContainer, ToastMessage } from '@/components/Toast';
 
 export default function Home() {
   const [projects, setProjects] = React.useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = React.useState<string | null>(null);
   const [activeProjectDetail, setActiveProjectDetail] = React.useState<ProjectDetailData | null>(null);
+  const [userEmail, setUserEmailState] = React.useState('');
 
   // Filters & Sorting
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -57,6 +61,7 @@ export default function Home() {
   const [isProjectModalOpen, setIsProjectModalOpen] = React.useState(false);
   const [projectToEdit, setProjectToEdit] = React.useState<Project | null>(null);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = React.useState(false);
+  const [isEmailSyncModalOpen, setIsEmailSyncModalOpen] = React.useState(false);
 
   // Toast & Loading
   const [toasts, setToasts] = React.useState<ToastMessage[]>([]);
@@ -100,6 +105,7 @@ export default function Home() {
   }, []);
 
   React.useEffect(() => {
+    setUserEmailState(getUserEmail());
     loadProjects();
   }, [loadProjects]);
 
@@ -111,10 +117,24 @@ export default function Home() {
     }
   }, [selectedProjectId, loadDetail]);
 
+  // Handle email changed for multi-device sync
+  const handleEmailChanged = (newEmail: string) => {
+    setUserEmailState(newEmail);
+    loadProjects();
+    if (newEmail) {
+      addToast('success', `Akun disinkronkan ke email: ${newEmail}`);
+    } else {
+      addToast('info', 'Kaitan email telah dicopot.');
+    }
+  };
+
   // Project handlers
   const handleSaveProject = async (data: Partial<Project>) => {
     try {
-      const saved = await saveProject(data);
+      const saved = await saveProject({
+        ...data,
+        user_email: userEmail || data.user_email || '',
+      });
       addToast('success', `Proyek "${saved.title}" berhasil disimpan!`);
       await loadProjects();
       if (selectedProjectId === saved.id) {
@@ -202,10 +222,13 @@ export default function Home() {
     }
   };
 
-  // Logbook handlers (with Live Preview)
+  // Logbook handlers (with Live Preview & email)
   const handleSaveLogbook = async (logData: Partial<LogbookEntry>) => {
     try {
-      await saveLogbook(logData);
+      await saveLogbook({
+        ...logData,
+        user_email: userEmail || logData.user_email || '',
+      });
       addToast('success', 'Entri logbook berhasil direkam!');
       if (selectedProjectId) {
         await loadDetail(selectedProjectId);
@@ -236,10 +259,8 @@ export default function Home() {
     }
   };
 
-  // Unique categories
   const categories = Array.from(new Set(projects.map((p) => p.category).filter(Boolean)));
 
-  // Filtered & Sorted Projects
   const filteredProjects = projects
     .filter((p) => {
       if (statusFilter !== 'all' && p.status !== statusFilter) return false;
@@ -264,7 +285,6 @@ export default function Home() {
       if (sortBy === 'title') {
         return a.title.localeCompare(b.title);
       }
-      // default 'updated'
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });
 
@@ -277,7 +297,9 @@ export default function Home() {
           setIsProjectModalOpen(true);
         }}
         onOpenSupabaseConfig={() => setIsSupabaseModalOpen(true)}
+        onOpenEmailSync={() => setIsEmailSyncModalOpen(true)}
         onResetData={handleResetData}
+        userEmail={userEmail}
       />
 
       {/* Main Container */}
@@ -329,6 +351,31 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* Multi-Device Email Banner if not configured */}
+              {!userEmail && (
+                <div 
+                  onClick={() => setIsEmailSyncModalOpen(true)}
+                  className="mb-6 p-3.5 sm:p-4 rounded-2xl border border-indigo-500/20 bg-indigo-950/20 hover:bg-indigo-950/30 cursor-pointer text-xs text-indigo-300 flex items-center justify-between gap-3 transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
+                      <Cloud className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="font-bold text-white block">
+                        Ingin akses proyek Anda dari HP / laptop lain?
+                      </span>
+                      <p className="text-indigo-200/80 text-[11px] mt-0.5">
+                        Hubungkan alamat email Anda untuk mengaktifkan auto async database ke seluruh perangkat.
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-semibold text-indigo-400 group-hover:text-white shrink-0 underline">
+                    Atur Sekarang →
+                  </span>
+                </div>
+              )}
+
               {/* KPI Cards */}
               <StatsOverview projects={projects} />
             </div>
@@ -350,7 +397,6 @@ export default function Home() {
 
                 {/* Dropdowns */}
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* Category Filter */}
                   <select
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
@@ -364,7 +410,6 @@ export default function Home() {
                     ))}
                   </select>
 
-                  {/* Sort By */}
                   <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-300 text-xs">
                     <ArrowUpDown className="h-3.5 w-3.5 text-zinc-500" />
                     <select
@@ -514,6 +559,12 @@ export default function Home() {
           if (selectedProjectId) loadDetail(selectedProjectId);
           addToast('success', 'Pengaturan koneksi Supabase diperbarui.');
         }}
+      />
+
+      <EmailSyncModal
+        isOpen={isEmailSyncModalOpen}
+        onClose={() => setIsEmailSyncModalOpen(false)}
+        onEmailChanged={handleEmailChanged}
       />
 
       {/* Toast Feedback */}

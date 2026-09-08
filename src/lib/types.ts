@@ -3,6 +3,7 @@ export type ProjectPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface Project {
   id: string;
+  user_email?: string;
   title: string;
   description: string;
   category: string;
@@ -44,6 +45,7 @@ export type LogbookType = 'daily_update' | 'milestone' | 'blocker' | 'release' |
 export interface LogbookEntry {
   id: string;
   project_id: string;
+  user_email?: string;
   title: string;
   content_markdown: string;
   log_type: LogbookType;

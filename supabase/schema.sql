@@ -1,15 +1,15 @@
 -- ==============================================================================
--- 🚀 SUPABASE DATABASE SCHEMA: PROJECT PROGRESS TRACKER
+-- 🚀 SUPABASE DATABASE SCHEMA: TRACK PROGRESS PROJECT (WITH EMAIL MULTI-DEVICE SYNC)
 -- ==============================================================================
 -- Jalankan skrip ini di SQL Editor dashboard Supabase Anda:
 -- https://supabase.com/dashboard/project/_/sql
 
--- 1. EXTENSIONS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. TABLE: PROJECTS
+-- 1. TABLE: PROJECTS
 CREATE TABLE IF NOT EXISTS public.projects (
     id TEXT PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    user_email TEXT DEFAULT '',
     title TEXT NOT NULL,
     description TEXT DEFAULT '',
     category TEXT DEFAULT 'General',
@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS public.projects (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 3. TABLE: MILESTONES
+-- MIGRATION SUPPORT IF TABLE ALREADY CREATED PREVIOUSLY:
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS user_email TEXT DEFAULT '';
+
+-- 2. TABLE: MILESTONES
 CREATE TABLE IF NOT EXISTS public.milestones (
     id TEXT PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     project_id TEXT NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
@@ -33,7 +36,7 @@ CREATE TABLE IF NOT EXISTS public.milestones (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4. TABLE: TASKS
+-- 3. TABLE: TASKS
 CREATE TABLE IF NOT EXISTS public.tasks (
     id TEXT PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     project_id TEXT NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
@@ -45,10 +48,11 @@ CREATE TABLE IF NOT EXISTS public.tasks (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 5. TABLE: LOGBOOKS
+-- 4. TABLE: LOGBOOKS
 CREATE TABLE IF NOT EXISTS public.logbooks (
     id TEXT PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     project_id TEXT NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    user_email TEXT DEFAULT '',
     title TEXT NOT NULL,
     content_markdown TEXT NOT NULL,
     log_type TEXT NOT NULL DEFAULT 'daily_update' CHECK (log_type IN ('daily_update', 'milestone', 'blocker', 'release', 'general')),
@@ -59,70 +63,24 @@ CREATE TABLE IF NOT EXISTS public.logbooks (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 6. INDEXES FOR PERFORMANCE
+-- MIGRATION SUPPORT FOR LOGBOOKS:
+ALTER TABLE public.logbooks ADD COLUMN IF NOT EXISTS user_email TEXT DEFAULT '';
+
+-- 5. INDEXES FOR PERFORMANCE & FAST MULTI-DEVICE FILTERING
+CREATE INDEX IF NOT EXISTS idx_projects_user_email ON public.projects(user_email);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON public.projects(status);
-CREATE INDEX IF NOT EXISTS idx_projects_due_date ON public.projects(due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON public.tasks(project_id);
-CREATE INDEX IF NOT EXISTS idx_tasks_status ON public.tasks(status);
 CREATE INDEX IF NOT EXISTS idx_milestones_project_id ON public.milestones(project_id);
 CREATE INDEX IF NOT EXISTS idx_logbooks_project_id ON public.logbooks(project_id);
-CREATE INDEX IF NOT EXISTS idx_logbooks_created_at ON public.logbooks(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_logbooks_user_email ON public.logbooks(user_email);
 
--- 7. ENABLE ROW LEVEL SECURITY (RLS)
+-- 6. ROW LEVEL SECURITY (RLS) POLICIES
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.milestones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.logbooks ENABLE ROW LEVEL SECURITY;
 
--- 8. OPEN ACCESS POLICIES (Cocok untuk prototyping / solo use)
-CREATE POLICY "Allow public all access on projects" ON public.projects FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public all access on milestones" ON public.milestones FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public all access on tasks" ON public.tasks FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public all access on logbooks" ON public.logbooks FOR ALL USING (true) WITH CHECK (true);
-
--- 9. INITIAL SAMPLE DATA (OPSIONAL)
-INSERT INTO public.projects (id, title, description, category, status, priority, progress_percent, start_date, due_date, tags)
-VALUES 
-(
-    'proj-1', 
-    'AI Multi-Agent Analytics Platform', 
-    'Sistem analitik real-time berbasis AI yang mengotomatisasi pemrosesan data, prediksi tren metrik bisnis, dan integrasi webhook multi-platform.',
-    'AI & Fullstack',
-    'in_progress',
-    'high',
-    68,
-    '2026-08-15',
-    '2026-09-30',
-    ARRAY['Next.js', 'Supabase', 'Python', 'LLM', 'Tailwind']
-)
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.milestones (id, project_id, title, due_date, is_completed)
-VALUES 
-('ms-1', 'proj-1', 'Arsitektur Sistem & Data Ingestion Pipeline', '2026-08-31', true),
-('ms-2', 'proj-1', 'Engine Agen AI & Integrasi LLM Evaluator', '2026-09-15', false),
-('ms-3', 'proj-1', 'Interactive Frontend Dashboard & Report Export', '2026-09-28', false)
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.tasks (id, project_id, milestone_id, title, status, priority, due_date)
-VALUES 
-('task-1', 'proj-1', 'ms-1', 'Setup skema database Supabase PostgreSQL & indexing', 'done', 'high', '2026-08-22'),
-('task-2', 'proj-1', 'ms-1', 'Implementasi Webhook Ingestion Service dengan rate limiter', 'done', 'medium', '2026-08-28'),
-('task-3', 'proj-1', 'ms-2', 'Optimasi token context & streaming response AI agent', 'in_progress', 'high', '2026-09-10'),
-('task-4', 'proj-1', 'ms-2', 'Benchmarking latency query vector embeddings pgvector', 'todo', 'medium', '2026-09-14'),
-('task-5', 'proj-1', 'ms-3', 'Live Chart metrik penggunaan token & cost forecasting', 'todo', 'low', '2026-09-22')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.logbooks (id, project_id, title, content_markdown, log_type, blockers, author_name, tags)
-VALUES 
-(
-    'log-1', 
-    'proj-1', 
-    'Implementasi Streaming Response & Penanganan Latency LLM', 
-    '### 🎯 Rangkuman Pencapaian Hari Ini\nHari ini berhasil mengoptimalkan latency koneksi API agen AI dengan mengimplementasikan Server-Sent Events (SSE).\n\n#### ✅ Item Selesai:\n- [x] Edge Runtime route handler\n- [x] Stream parser chunking\n- [x] AbortController graceful fallback\n\n> [!TIP]\n> Chunk buffering 64-byte memberikan visual typing fluid tanpa jank.',
-    'daily_update',
-    '',
-    'Lead Engineer',
-    ARRAY['AI', 'Performance', 'Streaming']
-)
-ON CONFLICT (id) DO NOTHING;
+CREATE POLICY "Allow public all on projects" ON public.projects FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on milestones" ON public.milestones FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on tasks" ON public.tasks FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on logbooks" ON public.logbooks FOR ALL USING (true) WITH CHECK (true);
