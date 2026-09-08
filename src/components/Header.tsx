@@ -1,7 +1,15 @@
 'use client';
 
 import React from 'react';
-import { Database, Plus, RefreshCw, Layers, Cloud, Mail } from 'lucide-react';
+import { 
+  Database, 
+  Plus, 
+  RefreshCw, 
+  Layers, 
+  Cloud, 
+  Trash2,
+  SlidersHorizontal 
+} from 'lucide-react';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { getUserEmail } from '@/lib/user-session';
 
@@ -10,6 +18,7 @@ interface HeaderProps {
   onOpenSupabaseConfig: () => void;
   onOpenEmailSync: () => void;
   onResetData: () => void;
+  onOpenClearData: () => void;
   userEmail?: string;
 }
 
@@ -18,6 +27,7 @@ export function Header({
   onOpenSupabaseConfig,
   onOpenEmailSync,
   onResetData,
+  onOpenClearData,
   userEmail,
 }: HeaderProps) {
   const [supabaseActive, setSupabaseActive] = React.useState(false);
@@ -102,9 +112,18 @@ export function Header({
           <button
             onClick={onResetData}
             className="p-2 rounded-lg border border-zinc-800/80 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors hidden sm:block"
-            title="Reset Data Sample Awal"
+            title="Muat Ulang Data Contoh Demo"
           >
             <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+
+          {/* Hapus Semua Data (Danger Zone Trigger) */}
+          <button
+            onClick={onOpenClearData}
+            className="p-2 rounded-lg border border-rose-500/20 bg-rose-950/20 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 hover:border-rose-500/40 transition-colors"
+            title="Hapus Semua Data (Danger Zone)"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
 
           {/* Create Project Button */}

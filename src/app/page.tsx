@@ -11,7 +11,8 @@ import {
   ArrowUpDown,
   Layers,
   Database,
-  Cloud
+  Cloud,
+  Trash2
 } from 'lucide-react';
 import { 
   Project, 
@@ -43,6 +44,7 @@ import { ProjectModal } from '@/components/ProjectModal';
 import { ProjectDetail } from '@/components/ProjectDetail';
 import { SupabaseConfigModal } from '@/components/SupabaseConfigModal';
 import { EmailSyncModal } from '@/components/EmailSyncModal';
+import { ClearDataModal } from '@/components/ClearDataModal';
 import { ToastContainer, ToastMessage } from '@/components/Toast';
 
 export default function Home() {
@@ -62,6 +64,7 @@ export default function Home() {
   const [projectToEdit, setProjectToEdit] = React.useState<Project | null>(null);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = React.useState(false);
   const [isEmailSyncModalOpen, setIsEmailSyncModalOpen] = React.useState(false);
+  const [isClearDataModalOpen, setIsClearDataModalOpen] = React.useState(false);
 
   // Toast & Loading
   const [toasts, setToasts] = React.useState<ToastMessage[]>([]);
@@ -126,6 +129,14 @@ export default function Home() {
     } else {
       addToast('info', 'Kaitan email telah dicopot.');
     }
+  };
+
+  // Handle data completely wiped
+  const handleDataCleared = (message: string) => {
+    setSelectedProjectId(null);
+    setActiveProjectDetail(null);
+    loadProjects();
+    addToast('info', message);
   };
 
   // Project handlers
@@ -251,9 +262,9 @@ export default function Home() {
   };
 
   const handleResetData = () => {
-    if (confirm('Reset seluruh data lokal ke sample awal? Data kustom yang belum disimpan di Supabase akan direset.')) {
+    if (confirm('Muat ulang seluruh data contoh awal default (seed demo)?')) {
       resetToInitialSeed();
-      addToast('info', 'Data lokal direset ke contoh default.');
+      addToast('info', 'Data lokal dimuat ulang ke contoh demo default.');
       setSelectedProjectId(null);
       loadProjects();
     }
@@ -299,6 +310,7 @@ export default function Home() {
         onOpenSupabaseConfig={() => setIsSupabaseModalOpen(true)}
         onOpenEmailSync={() => setIsEmailSyncModalOpen(true)}
         onResetData={handleResetData}
+        onOpenClearData={() => setIsClearDataModalOpen(true)}
         userEmail={userEmail}
       />
 
@@ -506,7 +518,7 @@ export default function Home() {
                 <p className="text-xs text-zinc-400 mt-1 max-w-sm mx-auto">
                   {searchQuery || statusFilter !== 'all' || categoryFilter !== 'all'
                     ? 'Coba sesuaikan filter atau kata kunci pencarian Anda.'
-                    : 'Belum ada proyek dalam portfolio Anda. Buat proyek pertama sekarang!'}
+                    : 'Portfolio kosong atau seluruh data telah dibersihkan. Buat proyek baru sekarang!'}
                 </p>
                 <button
                   onClick={() => {
@@ -565,6 +577,12 @@ export default function Home() {
         isOpen={isEmailSyncModalOpen}
         onClose={() => setIsEmailSyncModalOpen(false)}
         onEmailChanged={handleEmailChanged}
+      />
+
+      <ClearDataModal
+        isOpen={isClearDataModalOpen}
+        onClose={() => setIsClearDataModalOpen(false)}
+        onDataCleared={handleDataCleared}
       />
 
       {/* Toast Feedback */}

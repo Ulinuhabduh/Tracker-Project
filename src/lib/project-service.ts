@@ -486,6 +486,72 @@ export async function syncLocalDataToSupabase(email: string): Promise<{ success:
   }
 }
 
+export async function deleteAllData(scope: 'all' | 'user_only' = 'all'): Promise<{ success: boolean; message: string }> {
+  const currentEmail = getUserEmail();
+
+  if (isSupabaseConfigured()) {
+    try {
+      if (scope === 'user_only' && currentEmail) {
+        // Delete user's projects in Supabase (cascades to tasks and milestones)
+        const { error: projErr } = await supabase
+          .from('projects')
+          .delete()
+          .eq('user_email', currentEmail);
+
+        // Also delete user logbooks
+        const { error: logErr } = await supabase
+          .from('logbooks')
+          .delete()
+          .eq('user_email', currentEmail);
+
+        if (projErr || logErr) {
+          console.warn('Supabase partial delete warning:', projErr?.message || logErr?.message);
+        }
+      } else {
+        // Delete all data in Supabase
+        await supabase.from('tasks').delete().neq('id', '___');
+        await supabase.from('milestones').delete().neq('id', '___');
+        await supabase.from('logbooks').delete().neq('id', '___');
+        await supabase.from('projects').delete().neq('id', '___');
+      }
+    } catch (err) {
+      console.error('Supabase deleteAllData exception:', err);
+    }
+  }
+
+  // Clear or wipe LocalStorage
+  if (typeof window !== 'undefined') {
+    if (scope === 'user_only' && currentEmail) {
+      const projects = getLocal<Project>(STORAGE_KEYS.PROJECTS, []);
+      const remainingProjects = projects.filter((p) => p.user_email !== currentEmail);
+      setLocal(STORAGE_KEYS.PROJECTS, remainingProjects);
+
+      const remainingIds = new Set(remainingProjects.map((p) => p.id));
+      const milestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, []);
+      setLocal(STORAGE_KEYS.MILESTONES, milestones.filter((m) => remainingIds.has(m.project_id)));
+
+      const tasks = getLocal<Task>(STORAGE_KEYS.TASKS, []);
+      setLocal(STORAGE_KEYS.TASKS, tasks.filter((t) => remainingIds.has(t.project_id)));
+
+      const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, []);
+      setLocal(STORAGE_KEYS.LOGBOOKS, logs.filter((l) => remainingIds.has(l.project_id) && l.user_email !== currentEmail));
+    } else {
+      // Complete wipe
+      setLocal(STORAGE_KEYS.PROJECTS, []);
+      setLocal(STORAGE_KEYS.MILESTONES, []);
+      setLocal(STORAGE_KEYS.TASKS, []);
+      setLocal(STORAGE_KEYS.LOGBOOKS, []);
+    }
+  }
+
+  return {
+    success: true,
+    message: scope === 'user_only' && currentEmail
+      ? `Seluruh data proyek untuk akun ${currentEmail} telah berhasil dihapus.`
+      : 'Seluruh data proyek, tugas, milestone, dan logbook berhasil dihapus bersih.',
+  };
+}
+
 export function resetToInitialSeed(): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(INITIAL_PROJECTS));
@@ -493,3 +559,4 @@ export function resetToInitialSeed(): void {
   localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
   localStorage.setItem(STORAGE_KEYS.LOGBOOKS, JSON.stringify(INITIAL_LOGBOOKS));
 }
+
