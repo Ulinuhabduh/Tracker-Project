@@ -97,6 +97,33 @@ export default function Home() {
   );
 
   React.useEffect(() => {
+    // Tangani hasil redirect link konfirmasi email Supabase (#error=...).
+    // Tanpa ini, link kedaluwarsa hanya jadi halaman kosong tanpa penjelasan.
+    try {
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      if (hash.has('error')) {
+        const code = hash.get('error_code') || '';
+        const raw = (hash.get('error_description') || '').replace(/\+/g, ' ');
+        let desc = '';
+        try {
+          desc = decodeURIComponent(raw);
+        } catch {
+          desc = raw;
+        }
+        const msg =
+          code === 'otp_expired' || /expired|invalid/i.test(desc)
+            ? 'Tautan konfirmasi kedaluwarsa atau sudah dipakai. Minta tautan baru lewat tombol kirim ulang, lalu pakai email terbaru.'
+            : desc
+              ? `Konfirmasi gagal: ${desc}. Coba kirim ulang email konfirmasi.`
+              : 'Konfirmasi email gagal. Coba kirim ulang email konfirmasi.';
+        notify('error', msg);
+        setAuthOpen(true);
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    } catch {
+      /* abaikan: URL tidak bisa dibaca */
+    }
+
     setUserEmailState(getUserEmail());
     refreshAll().finally(() => setLoading(false));
 

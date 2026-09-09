@@ -28,6 +28,18 @@ export function isSupabaseConfigured(): boolean {
   return isConfigured;
 }
 
+/**
+ * URL tujuan setelah klik link konfirmasi email.
+ * Prioritas: NEXT_PUBLIC_SITE_URL (wajib diisi saat production),
+ * fallback ke origin browser saat development lokal.
+ */
+export function getEmailRedirectUrl(): string | undefined {
+  const site = (process.env.NEXT_PUBLIC_SITE_URL || '').trim().replace(/\/+$/, '');
+  if (site && /^https?:\/\//.test(site)) return site;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return undefined;
+}
+
 export async function testSupabaseConnection(): Promise<{ success: boolean; message: string }> {
   if (!isConfigured) {
     return {
@@ -79,7 +91,7 @@ export async function signUpWithEmailPassword(
   }
 
   const cleanEmail = email.trim().toLowerCase();
-  const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+  const redirectTo = getEmailRedirectUrl();
 
   const { data, error } = await supabase.auth.signUp({
     email: cleanEmail,
@@ -165,7 +177,7 @@ export async function resendConfirmationEmail(
     return { error: new Error('Supabase belum dikonfigurasi di .env.local') };
   }
 
-  const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+  const redirectTo = getEmailRedirectUrl();
 
   const { error } = await supabase.auth.resend({
     type: 'signup',

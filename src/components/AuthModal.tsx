@@ -200,6 +200,10 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
                   Tautan konfirmasi dikirim ke <strong className="mono text-stone-700">{email}</strong>. Klik tautan itu, lalu masuk.
                 </p>
               </div>
+              <p className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-[11.5px] leading-relaxed text-stone-500">
+                Setiap email baru membuat tautan lama hangus — selalu pakai <strong>email terbaru</strong>.
+                Buka tautan saat aplikasi berjalan agar sesi langsung tersambung.
+              </p>
               <form onSubmit={verify} className="space-y-2">
                 <label htmlFor="otp" className="field-label">
                   Punya kode 6 digit? Masukkan di sini (opsional)
