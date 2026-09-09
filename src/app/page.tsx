@@ -1,651 +1,470 @@
 'use client';
 
 import React from 'react';
-import { 
-  Search, 
-  Filter, 
-  Plus, 
-  FolderGit2, 
-  Sparkles, 
-  SlidersHorizontal,
-  ArrowUpDown,
-  Layers,
-  Database,
-  Cloud,
-  ShieldCheck,
-  Trash2
-} from 'lucide-react';
-import { 
-  Project, 
-  ProjectDetailData, 
-  Task, 
-  Milestone, 
-  LogbookEntry, 
-  ProjectStatus, 
-  ProjectPriority 
+import type {
+  LogbookEntry,
+  Milestone,
+  Project,
+  ProjectDetailData,
+  ProjectStatus,
+  Task,
 } from '@/lib/types';
-import { 
-  fetchProjects, 
-  fetchProjectDetail, 
-  saveProject, 
-  deleteProject, 
-  saveTask, 
-  deleteTask, 
-  saveMilestone, 
-  deleteMilestone, 
-  saveLogbook, 
+import {
   deleteLogbook,
-  resetToInitialSeed 
+  deleteMilestone,
+  deleteProject,
+  deleteTask,
+  duplicateProject,
+  fetchAllTasks,
+  fetchProjectDetail,
+  fetchProjects,
+  fetchRecentLogbooks,
+  saveLogbook,
+  saveMilestone,
+  saveProject,
+  saveTask,
 } from '@/lib/project-service';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { getUserEmail, setUserEmail, clearUserEmail } from '@/lib/user-session';
-import { Header } from '@/components/Header';
-import { StatsOverview } from '@/components/StatsOverview';
-import { ProjectCard } from '@/components/ProjectCard';
-import { ProjectModal } from '@/components/ProjectModal';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { clearUserEmail, getUserEmail, setUserEmail } from '@/lib/user-session';
+import { groupProjectsByDeadline, groupTasksForToday } from '@/lib/dashboard-utils';
+import { Sidebar } from '@/components/Sidebar';
+import { MobileNewButton, Topbar } from '@/components/Topbar';
+import { BottomNav } from '@/components/BottomNav';
+import { CommandPalette } from '@/components/CommandPalette';
 import { ProjectDetail } from '@/components/ProjectDetail';
-import { SupabaseConfigModal } from '@/components/SupabaseConfigModal';
+import { ProjectModal } from '@/components/ProjectModal';
 import { AuthModal } from '@/components/AuthModal';
-import { ClearDataModal } from '@/components/ClearDataModal';
-import { ToastContainer, ToastMessage } from '@/components/Toast';
+import { SettingsModal } from '@/components/SettingsModal';
+import { ToastContainer, type ToastMessage } from '@/components/Toast';
+import { SkeletonCard } from '@/components/ui';
+import { DashboardView } from '@/components/views/DashboardView';
+import { TodayView } from '@/components/views/TodayView';
+import { DeadlinesView } from '@/components/views/DeadlinesView';
+import { ActivityView } from '@/components/views/ActivityView';
+import type { ViewKey } from '@/components/navigation';
 
 export default function Home() {
   const [projects, setProjects] = React.useState<Project[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = React.useState<string | null>(null);
-  const [activeProjectDetail, setActiveProjectDetail] = React.useState<ProjectDetailData | null>(null);
+  const [allTasks, setAllTasks] = React.useState<Task[]>([]);
+  const [recentLogs, setRecentLogs] = React.useState<LogbookEntry[]>([]);
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [detail, setDetail] = React.useState<ProjectDetailData | null>(null);
   const [userEmail, setUserEmailState] = React.useState('');
+  const [view, setView] = React.useState<ViewKey>('dashboard');
+  const [loading, setLoading] = React.useState(true);
 
-  // Filters & Sorting
-  const [searchQuery, setSearchQuery] = React.useState('');
-  const [statusFilter, setStatusFilter] = React.useState<string>('all');
-  const [categoryFilter, setCategoryFilter] = React.useState<string>('all');
-  const [sortBy, setSortBy] = React.useState<'updated' | 'deadline' | 'progress' | 'title'>('updated');
-
-  // Modals
-  const [isProjectModalOpen, setIsProjectModalOpen] = React.useState(false);
-  const [projectToEdit, setProjectToEdit] = React.useState<Project | null>(null);
-  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = React.useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = React.useState(false);
-  const [isClearDataModalOpen, setIsClearDataModalOpen] = React.useState(false);
-
-  // Toast & Loading
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+  const [projectModal, setProjectModal] = React.useState(false);
+  const [editing, setEditing] = React.useState<Project | null>(null);
+  const [authOpen, setAuthOpen] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [toasts, setToasts] = React.useState<ToastMessage[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
 
-  const addToast = (type: 'success' | 'error' | 'info', message: string) => {
-    const id = 'toast-' + Date.now() + Math.random();
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  };
-
-  const removeToast = (id: string) => {
+  const notify = React.useCallback((type: ToastMessage['type'], message: string) => {
+    const id = `t-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setToasts((prev) => [...prev.slice(-2), { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4200);
+  }, []);
+  const dismissToast = React.useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  // Load projects list
-  const loadProjects = React.useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const data = await fetchProjects();
-      setProjects(data);
-    } catch (err) {
-      console.error('Failed to load projects:', err);
-      addToast('error', 'Gagal memuat daftar proyek.');
-    } finally {
-      setIsLoading(false);
-    }
   }, []);
 
-  // Load single project detail
-  const loadDetail = React.useCallback(async (id: string) => {
+  // Parallel first load: projects + tasks + logbooks in one round trip.
+  const refreshAll = React.useCallback(async () => {
     try {
-      const detail = await fetchProjectDetail(id);
-      setActiveProjectDetail(detail);
-    } catch (err) {
-      console.error('Failed to load project detail:', err);
-      addToast('error', 'Gagal memuat rincian proyek.');
+      const [p, t, l] = await Promise.all([
+        fetchProjects(),
+        fetchAllTasks(),
+        fetchRecentLogbooks(60),
+      ]);
+      setProjects(p);
+      setAllTasks(t);
+      setRecentLogs(l);
+    } catch {
+      notify('error', 'Gagal memuat data. Coba muat ulang halaman.');
     }
+  }, [notify]);
+
+  const refreshDetail = React.useCallback(
+    async (id: string) => {
+      try {
+        setDetail(await fetchProjectDetail(id));
+      } catch {
+        notify('error', 'Gagal memuat detail proyek.');
+      }
+    },
+    [notify]
+  );
+
+  React.useEffect(() => {
+    setUserEmailState(getUserEmail());
+    refreshAll().finally(() => setLoading(false));
+
+    if (!isSupabaseConfigured()) return;
+    supabase.auth.getUser().then(({ data }) => {
+      const email = data?.user?.email;
+      const confirmed =
+        data?.user?.email_confirmed_at ||
+        (data?.user as unknown as { confirmed_at?: string })?.confirmed_at;
+      if (email && confirmed) {
+        const v = email.toLowerCase();
+        setUserEmail(v);
+        setUserEmailState(v);
+      }
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      const email = session?.user?.email;
+      const confirmed =
+        session?.user?.email_confirmed_at ||
+        (session?.user as unknown as { confirmed_at?: string })?.confirmed_at;
+      if (email && confirmed) {
+        const v = email.toLowerCase();
+        setUserEmail(v);
+        setUserEmailState(v);
+        refreshAll();
+        if (event === 'SIGNED_IN') notify('success', `Masuk sebagai ${v}.`);
+      } else if (event === 'SIGNED_OUT') {
+        clearUserEmail();
+        setUserEmailState('');
+        refreshAll();
+      }
+    });
+    return () => listener.subscription.unsubscribe();
+  }, [refreshAll, notify]);
+
+  React.useEffect(() => {
+    if (selectedId) refreshDetail(selectedId);
+    else setDetail(null);
+  }, [selectedId, refreshDetail]);
+
+  // Global shortcuts: Ctrl/⌘K or "/" opens the palette.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName || '').toLowerCase();
+      const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      } else if (e.key === '/' && !typing && !paletteOpen) {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [paletteOpen]);
+
+  // ---- derived ----
+  const todayGroups = React.useMemo(() => groupTasksForToday(allTasks, projects), [allTasks, projects]);
+  const deadlineGroups = React.useMemo(() => groupProjectsByDeadline(projects), [projects]);
+  const todayCount = todayGroups.overdue.length + todayGroups.today.length;
+  const deadlineCount = deadlineGroups.overdue.length + deadlineGroups.week.length;
+  const projectName = React.useCallback(
+    (id: string) => projects.find((p) => p.id === id)?.title || 'Proyek',
+    [projects]
+  );
+
+  // ---- navigation ----
+  const openProject = React.useCallback((id: string) => {
+    setSelectedId(id);
+    setPaletteOpen(false);
+  }, []);
+  const goView = React.useCallback((v: ViewKey) => {
+    setView(v);
+    setSelectedId(null);
+    setPaletteOpen(false);
+  }, []);
+  const newProject = React.useCallback(() => {
+    setEditing(null);
+    setProjectModal(true);
+    setPaletteOpen(false);
   }, []);
 
-  // Check Supabase Auth state on mount
-  React.useEffect(() => {
-    const saved = getUserEmail();
-    setUserEmailState(saved);
-    loadProjects();
-
-    if (isSupabaseConfigured()) {
-      // Check current auth session
-      supabase.auth.getUser().then(({ data }) => {
-        if (data?.user?.email && (data.user.email_confirmed_at || (data.user as any).confirmed_at)) {
-          const verifiedEmail = data.user.email.toLowerCase();
-          setUserEmail(verifiedEmail);
-          setUserEmailState(verifiedEmail);
-        }
-      });
-
-      // Listen for auth state changes (login / logout / confirmation redirect)
-      const { data: authListener } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          if (session?.user?.email && (session.user.email_confirmed_at || (session.user as any).confirmed_at)) {
-            const verifiedEmail = session.user.email.toLowerCase();
-            setUserEmail(verifiedEmail);
-            setUserEmailState(verifiedEmail);
-            loadProjects();
-            if (event === 'SIGNED_IN') {
-              addToast('success', `Akun terkonfirmasi & aktif: ${verifiedEmail}`);
-            }
-          } else if (event === 'SIGNED_OUT') {
-            clearUserEmail();
-            setUserEmailState('');
-            loadProjects();
-          }
-        }
-      );
-
-      return () => {
-        authListener.subscription.unsubscribe();
-      };
-    }
-  }, [loadProjects]);
-
-  React.useEffect(() => {
-    if (selectedProjectId) {
-      loadDetail(selectedProjectId);
-    } else {
-      setActiveProjectDetail(null);
-    }
-  }, [selectedProjectId, loadDetail]);
-
-  // Auth Handlers
-  const handleAuthSuccess = (email: string) => {
-    setUserEmail(email);
-    setUserEmailState(email);
-    loadProjects();
-    addToast('success', `Berhasil masuk & terproteksi: ${email}`);
-  };
-
-  const handleSignedOut = () => {
-    clearUserEmail();
-    setUserEmailState('');
-    loadProjects();
-    addToast('info', 'Anda telah keluar dari akun.');
-  };
-
-  // Handle data completely wiped
-  const handleDataCleared = (message: string) => {
-    setSelectedProjectId(null);
-    setActiveProjectDetail(null);
-    loadProjects();
-    addToast('info', message);
-  };
-
-  // Project handlers
+  // ---- mutations ----
   const handleSaveProject = async (data: Partial<Project>) => {
     try {
-      const saved = await saveProject({
-        ...data,
-        user_email: userEmail || data.user_email || '',
-      });
-      addToast('success', `Proyek "${saved.title}" berhasil disimpan!`);
-      await loadProjects();
-      if (selectedProjectId === saved.id) {
-        await loadDetail(saved.id);
-      }
-    } catch (err) {
-      addToast('error', 'Gagal menyimpan proyek.');
+      const saved = await saveProject({ ...data, user_email: userEmail || data.user_email || '' });
+      notify('success', `Proyek “${saved.title}” tersimpan.`);
+      await refreshAll();
+      if (selectedId === saved.id) await refreshDetail(saved.id);
+    } catch {
+      notify('error', 'Gagal menyimpan proyek. Coba lagi.');
     }
   };
 
   const handleDeleteProject = async (id: string) => {
+    const target = projects.find((p) => p.id === id);
+    if (!window.confirm(`Hapus proyek “${target?.title || ''}” beserta tugas & logbook-nya?`)) return;
     try {
       await deleteProject(id);
-      addToast('info', 'Proyek telah dihapus.');
-      if (selectedProjectId === id) {
-        setSelectedProjectId(null);
+      notify('info', 'Proyek dihapus.');
+      if (selectedId === id) setSelectedId(null);
+      await refreshAll();
+    } catch {
+      notify('error', 'Gagal menghapus proyek.');
+    }
+  };
+
+  const handleDuplicate = async (id: string) => {
+    try {
+      const copy = await duplicateProject(id);
+      if (copy) {
+        notify('success', `Duplikat dibuat: “${copy.title}”.`);
+        await refreshAll();
       }
-      await loadProjects();
-    } catch (err) {
-      addToast('error', 'Gagal menghapus proyek.');
+    } catch {
+      notify('error', 'Gagal menduplikat proyek.');
     }
   };
 
-  const handleStatusChange = async (id: string, newStatus: ProjectStatus) => {
+  const handleStatus = async (id: string, status: ProjectStatus) => {
     try {
-      await saveProject({ id, status: newStatus });
-      addToast('success', 'Status proyek diperbarui.');
-      await loadProjects();
-      if (selectedProjectId === id) {
-        await loadDetail(id);
-      }
-    } catch (err) {
-      addToast('error', 'Gagal memperbarui status proyek.');
+      await saveProject({ id, status });
+      notify('success', 'Status proyek diperbarui.');
+      await refreshAll();
+      if (selectedId === id) await refreshDetail(id);
+    } catch {
+      notify('error', 'Gagal memperbarui status.');
     }
   };
 
-  // Task handlers
-  const handleSaveTask = async (taskData: Partial<Task>) => {
+  const afterTaskChange = async () => {
+    await Promise.all([refreshAll(), selectedId ? refreshDetail(selectedId) : Promise.resolve()]);
+  };
+
+  const handleSaveTask = async (t: Partial<Task>) => {
     try {
-      await saveTask(taskData);
-      addToast('success', 'Task berhasil diperbarui.');
-      if (selectedProjectId) {
-        await loadDetail(selectedProjectId);
-        await loadProjects();
-      }
-    } catch (err) {
-      addToast('error', 'Gagal menyimpan task.');
+      await saveTask(t);
+      await afterTaskChange();
+    } catch {
+      notify('error', 'Gagal menyimpan tugas.');
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
-    if (!selectedProjectId) return;
+  const handleToggleTask = async (task: Task) => {
     try {
-      await deleteTask(taskId, selectedProjectId);
-      addToast('info', 'Task dihapus.');
-      await loadDetail(selectedProjectId);
-      await loadProjects();
-    } catch (err) {
-      addToast('error', 'Gagal menghapus task.');
-    }
-  };
-
-  // Milestone handlers
-  const handleSaveMilestone = async (msData: Partial<Milestone>) => {
-    try {
-      await saveMilestone(msData);
-      addToast('success', 'Milestone berhasil diperbarui.');
-      if (selectedProjectId) {
-        await loadDetail(selectedProjectId);
-      }
-    } catch (err) {
-      addToast('error', 'Gagal menyimpan milestone.');
-    }
-  };
-
-  const handleDeleteMilestone = async (msId: string) => {
-    try {
-      await deleteMilestone(msId);
-      addToast('info', 'Milestone dihapus.');
-      if (selectedProjectId) {
-        await loadDetail(selectedProjectId);
-      }
-    } catch (err) {
-      addToast('error', 'Gagal menghapus milestone.');
-    }
-  };
-
-  // Logbook handlers (with Live Preview & email)
-  const handleSaveLogbook = async (logData: Partial<LogbookEntry>) => {
-    try {
-      await saveLogbook({
-        ...logData,
-        user_email: userEmail || logData.user_email || '',
+      await saveTask({
+        id: task.id,
+        project_id: task.project_id,
+        status: task.status === 'done' ? 'todo' : 'done',
       });
-      addToast('success', 'Entri logbook berhasil direkam!');
-      if (selectedProjectId) {
-        await loadDetail(selectedProjectId);
-      }
-    } catch (err) {
-      addToast('error', 'Gagal menyimpan catatan logbook.');
+      await refreshAll();
+      if (selectedId) await refreshDetail(selectedId);
+    } catch {
+      notify('error', 'Gagal mengubah status tugas.');
     }
   };
 
-  const handleDeleteLogbook = async (logId: string) => {
+  const handleDeleteTask = async (id: string) => {
+    if (!selectedId) return;
     try {
-      await deleteLogbook(logId);
-      addToast('info', 'Entri logbook dihapus.');
-      if (selectedProjectId) {
-        await loadDetail(selectedProjectId);
-      }
-    } catch (err) {
-      addToast('error', 'Gagal menghapus catatan logbook.');
+      await deleteTask(id, selectedId);
+      await afterTaskChange();
+      notify('info', 'Tugas dihapus.');
+    } catch {
+      notify('error', 'Gagal menghapus tugas.');
     }
   };
 
-  const handleResetData = () => {
-    if (confirm('Muat ulang seluruh data contoh awal default (seed demo)?')) {
-      resetToInitialSeed();
-      addToast('info', 'Data lokal dimuat ulang ke contoh demo default.');
-      setSelectedProjectId(null);
-      loadProjects();
+  const handleSaveMilestone = async (m: Partial<Milestone>) => {
+    try {
+      await saveMilestone(m);
+      if (selectedId) await refreshDetail(selectedId);
+    } catch {
+      notify('error', 'Gagal menyimpan milestone.');
     }
   };
 
-  const categories = Array.from(new Set(projects.map((p) => p.category).filter(Boolean)));
+  const handleDeleteMilestone = async (id: string) => {
+    try {
+      await deleteMilestone(id);
+      if (selectedId) await refreshDetail(selectedId);
+      notify('info', 'Milestone dihapus.');
+    } catch {
+      notify('error', 'Gagal menghapus milestone.');
+    }
+  };
 
-  const filteredProjects = projects
-    .filter((p) => {
-      if (statusFilter !== 'all' && p.status !== statusFilter) return false;
-      if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchTitle = p.title.toLowerCase().includes(q);
-        const matchDesc = p.description?.toLowerCase().includes(q);
-        const matchTags = p.tags?.some((t) => t.toLowerCase().includes(q));
-        const matchCategory = p.category?.toLowerCase().includes(q);
-        return matchTitle || matchDesc || matchTags || matchCategory;
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'deadline') {
-        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-      }
-      if (sortBy === 'progress') {
-        return (b.progress_percent || 0) - (a.progress_percent || 0);
-      }
-      if (sortBy === 'title') {
-        return a.title.localeCompare(b.title);
-      }
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-    });
+  const handleSaveLogbook = async (l: Partial<LogbookEntry>) => {
+    try {
+      await saveLogbook({ ...l, user_email: userEmail || l.user_email || '' });
+      notify('success', 'Catatan tersimpan.');
+      const [, logs] = await Promise.all([
+        selectedId ? refreshDetail(selectedId) : Promise.resolve(),
+        fetchRecentLogbooks(60),
+      ]);
+      setRecentLogs(logs);
+    } catch {
+      notify('error', 'Gagal menyimpan catatan.');
+    }
+  };
+
+  const handleDeleteLogbook = async (id: string) => {
+    try {
+      await deleteLogbook(id);
+      if (selectedId) await refreshDetail(selectedId);
+      setRecentLogs(await fetchRecentLogbooks(60));
+      notify('info', 'Catatan dihapus.');
+    } catch {
+      notify('error', 'Gagal menghapus catatan.');
+    }
+  };
+
+  const handleAuthSuccess = (email: string) => {
+    setUserEmail(email);
+    setUserEmailState(email);
+    refreshAll();
+    notify('success', `Masuk sebagai ${email}.`);
+  };
+  const handleSignedOut = () => {
+    clearUserEmail();
+    setUserEmailState('');
+    refreshAll();
+    notify('info', 'Anda keluar dari akun.');
+  };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#09090b] text-zinc-100 selection:bg-indigo-500/30">
-      {/* Top Header */}
-      <Header
-        onNewProject={() => {
-          setProjectToEdit(null);
-          setIsProjectModalOpen(true);
-        }}
-        onOpenSupabaseConfig={() => setIsSupabaseModalOpen(true)}
-        onOpenAuthModal={() => setIsAuthModalOpen(true)}
-        onResetData={handleResetData}
-        onOpenClearData={() => setIsClearDataModalOpen(true)}
+    <div className="flex min-h-screen">
+      <Sidebar
+        view={view}
+        onNavigate={goView}
+        projects={projects}
+        activeProjectId={selectedId}
+        onOpenProject={openProject}
+        todayCount={todayCount}
+        deadlineCount={deadlineCount}
         userEmail={userEmail}
+        cloudActive={isSupabaseConfigured()}
+        onOpenAuth={() => setAuthOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onNewProject={newProject}
       />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 pt-5 sm:pt-8 pb-24 sm:pb-16">
-        {selectedProjectId && activeProjectDetail ? (
-          /* WORKSPACE VIEW: Selected Project */
-          <ProjectDetail
-            projectData={activeProjectDetail}
-            onBack={() => setSelectedProjectId(null)}
-            onEditProject={(proj) => {
-              setProjectToEdit(proj);
-              setIsProjectModalOpen(true);
-            }}
-            onDeleteProject={handleDeleteProject}
-            onStatusChange={handleStatusChange}
-            onSaveTask={handleSaveTask}
-            onDeleteTask={handleDeleteTask}
-            onSaveMilestone={handleSaveMilestone}
-            onDeleteMilestone={handleDeleteMilestone}
-            onSaveLogbook={handleSaveLogbook}
-            onDeleteLogbook={handleDeleteLogbook}
-          />
-        ) : (
-          /* DASHBOARD VIEW: Portfolio Overview */
-          <div className="animate-fade-in space-y-6 sm:space-y-8">
-            {/* Top Hero & KPI Cards */}
-            <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 sm:mb-6">
-                <div>
-                  <h1 className="text-xl sm:text-3xl font-extrabold text-white tracking-tight">
-                    Progress Portfolio Dashboard
-                  </h1>
-                  <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-                    Pantau metrik kecepatan sprint, pencapaian milestone, dan logbook terintegrasi Supabase
-                  </p>
-                </div>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Topbar
+          onOpenPalette={() => setPaletteOpen(true)}
+          onNewProject={newProject}
+          userEmail={userEmail}
+          onOpenAuth={() => setAuthOpen(true)}
+        />
 
-                <div className="hidden sm:flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setProjectToEdit(null);
-                      setIsProjectModalOpen(true);
-                    }}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Tambah Proyek</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Secure Auth Banner if not authenticated */}
-              {!userEmail && (
-                <div 
-                  onClick={() => setIsAuthModalOpen(true)}
-                  className="mb-5 sm:mb-6 p-3 sm:p-4 rounded-2xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/40 via-zinc-900 to-indigo-950/30 hover:border-indigo-500/50 cursor-pointer text-xs text-indigo-300 flex items-center justify-between gap-3 transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
-                      <ShieldCheck className="h-4.5 w-4.5" />
-                    </div>
-                    <div>
-                      <span className="font-bold text-white block text-xs sm:text-sm">
-                        Ingin data Anda terproteksi aman antar-device?
-                      </span>
-                      <p className="text-indigo-200/80 text-[11px] mt-0.5 leading-relaxed">
-                        Masuk dengan Email & Kata Sandi agar data proyek Anda terproteksi dan tersinkronisasi aman.
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-semibold text-indigo-400 group-hover:text-white shrink-0 underline whitespace-nowrap">
-                    Masuk →
-                  </span>
-                </div>
-              )}
-
-              {/* KPI Cards */}
-              <StatsOverview projects={projects} />
-            </div>
-
-            {/* Filter Bar */}
-            <div className="p-3 sm:p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 space-y-2.5 sm:space-y-3">
-              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 sm:gap-3">
-                {/* Search Bar */}
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-2.5 sm:top-3 h-4 w-4 text-zinc-500" />
-                  <input
-                    type="text"
-                    placeholder="Cari nama proyek, tags, deskripsi..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 sm:pl-10 pr-4 py-2 rounded-xl border border-zinc-800 bg-zinc-950 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-indigo-500 transition-all"
-                  />
-                </div>
-
-                {/* Dropdowns */}
-                <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2">
-                  <select
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="w-full sm:w-auto px-3 py-2 rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-300 text-xs focus:outline-none focus:border-indigo-500 truncate"
-                  >
-                    <option value="all">Semua Kategori</option>
-                    {categories.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-300 text-xs w-full sm:w-auto">
-                    <ArrowUpDown className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
-                    <select
-                      value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as any)}
-                      className="bg-transparent text-zinc-300 text-xs focus:outline-none w-full truncate"
-                    >
-                      <option value="updated">Terbaru</option>
-                      <option value="deadline">Deadline</option>
-                      <option value="progress">Progres</option>
-                      <option value="title">Nama (A-Z)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Status Filter Pills: Horizontally scrollable on mobile */}
-              <div className="flex items-center gap-1.5 pt-2 text-xs border-t border-zinc-850 overflow-x-auto scrollbar-none pb-0.5 -mx-1 px-1">
-                <span className="text-[11px] font-mono text-zinc-400 mr-1 hidden sm:inline shrink-0">
-                  Status:
-                </span>
-                <button
-                  onClick={() => setStatusFilter('all')}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg transition-all text-xs ${
-                    statusFilter === 'all'
-                      ? 'bg-zinc-800 text-white font-medium shadow-sm'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                  }`}
-                >
-                  Semua ({projects.length})
-                </button>
-                <button
-                  onClick={() => setStatusFilter('in_progress')}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg transition-all text-xs ${
-                    statusFilter === 'in_progress'
-                      ? 'bg-sky-500/20 text-sky-300 font-medium border border-sky-500/30'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                  }`}
-                >
-                  Sedang Berjalan
-                </button>
-                <button
-                  onClick={() => setStatusFilter('planning')}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg transition-all text-xs ${
-                    statusFilter === 'planning'
-                      ? 'bg-zinc-700 text-white font-medium'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                  }`}
-                >
-                  Perencanaan
-                </button>
-                <button
-                  onClick={() => setStatusFilter('completed')}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg transition-all text-xs ${
-                    statusFilter === 'completed'
-                      ? 'bg-emerald-500/20 text-emerald-300 font-medium border border-emerald-500/30'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                  }`}
-                >
-                  Selesai
-                </button>
-                <button
-                  onClick={() => setStatusFilter('on_hold')}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg transition-all text-xs ${
-                    statusFilter === 'on_hold'
-                      ? 'bg-amber-500/20 text-amber-300 font-medium border border-amber-500/30'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                  }`}
-                >
-                  Tertunda
-                </button>
-              </div>
-            </div>
-
-            {/* Projects Grid */}
-            {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="glass-card rounded-2xl p-6 h-56 border border-zinc-800 animate-pulse"
-                  >
-                    <div className="h-4 bg-zinc-800 rounded w-1/3 mb-4" />
-                    <div className="h-6 bg-zinc-800 rounded w-3/4 mb-2" />
-                    <div className="h-4 bg-zinc-800 rounded w-full mb-6" />
-                    <div className="h-2 bg-zinc-800 rounded-full w-full mt-auto" />
-                  </div>
+        <main id="konten" className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-5 sm:px-6 sm:pt-7 lg:pb-12">
+          {loading ? (
+            <div className="space-y-3" aria-label="Memuat…">
+              <div className="skeleton h-8 w-56" />
+              <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <SkeletonCard key={i} />
                 ))}
               </div>
-            ) : filteredProjects.length === 0 ? (
-              <div className="glass-card rounded-3xl p-12 text-center border border-zinc-800/80">
-                <FolderGit2 className="h-12 w-12 text-zinc-600 mx-auto mb-3" />
-                <h3 className="text-base font-bold text-white">Tidak ada proyek yang ditemukan</h3>
-                <p className="text-xs text-zinc-400 mt-1 max-w-sm mx-auto">
-                  {searchQuery || statusFilter !== 'all' || categoryFilter !== 'all'
-                    ? 'Coba sesuaikan filter atau kata kunci pencarian Anda.'
-                    : 'Portfolio kosong atau seluruh data telah dibersihkan. Buat proyek baru sekarang!'}
-                </p>
-                <button
-                  onClick={() => {
-                    setProjectToEdit(null);
-                    setIsProjectModalOpen(true);
-                  }}
-                  className="mt-5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20 transition-all inline-flex items-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Buat Proyek Baru</span>
-                </button>
+              <div className="grid gap-3 md:grid-cols-2">
+                <SkeletonCard />
+                <SkeletonCard />
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredProjects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    onOpen={(p) => setSelectedProjectId(p.id)}
-                    onEdit={(p) => {
-                      setProjectToEdit(p);
-                      setIsProjectModalOpen(true);
-                    }}
-                    onDelete={handleDeleteProject}
-                    onStatusChange={handleStatusChange}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </main>
+            </div>
+          ) : selectedId && detail ? (
+            <ProjectDetail
+              projectData={detail}
+              onBack={() => setSelectedId(null)}
+              onEditProject={(p) => {
+                setEditing(p);
+                setProjectModal(true);
+              }}
+              onDuplicate={handleDuplicate}
+              onDeleteProject={handleDeleteProject}
+              onStatusChange={handleStatus}
+              onSaveTask={handleSaveTask}
+              onDeleteTask={handleDeleteTask}
+              onSaveMilestone={handleSaveMilestone}
+              onDeleteMilestone={handleDeleteMilestone}
+              onSaveLogbook={handleSaveLogbook}
+              onDeleteLogbook={handleDeleteLogbook}
+            />
+          ) : selectedId ? (
+            <div className="space-y-3" aria-label="Memuat…">
+              <div className="skeleton h-8 w-48" />
+              <SkeletonCard />
+            </div>
+          ) : view === 'today' ? (
+            <TodayView
+              groups={todayGroups}
+              onToggleTask={handleToggleTask}
+              onOpenProject={openProject}
+              onNavigateDeadlines={() => goView('deadlines')}
+            />
+          ) : view === 'deadlines' ? (
+            <DeadlinesView grouped={deadlineGroups} onOpenProject={openProject} />
+          ) : view === 'activity' ? (
+            <ActivityView logs={recentLogs} projectName={projectName} onOpenProject={openProject} />
+          ) : (
+            <DashboardView
+              userEmail={userEmail}
+              projects={projects}
+              recentLogs={recentLogs}
+              onOpenProject={openProject}
+              onEdit={(p) => {
+                setEditing(p);
+                setProjectModal(true);
+              }}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDeleteProject}
+              onStatusChange={handleStatus}
+              onNewProject={newProject}
+              onNavigate={goView}
+            />
+          )}
 
-      {/* Modals */}
+          <footer className="flex flex-col items-center justify-between gap-1 pb-2 pt-10 text-[11px] text-stone-400 sm:flex-row">
+            <p>
+              <span translate="no">Tracker Nexus</span> — kerja fokus, rapi tercatat.
+            </p>
+            <p className="mono">
+              {isSupabaseConfigured() ? 'cloud sync aktif' : 'mode lokal'} • {new Date().getFullYear()}
+            </p>
+          </footer>
+        </main>
+      </div>
+
+      <BottomNav view={view} onNavigate={goView} todayCount={todayCount} deadlineCount={deadlineCount} />
+      {!selectedId ? <MobileNewButton onClick={newProject} /> : null}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        projects={projects}
+        onOpenProject={openProject}
+        onNavigate={goView}
+        onNewProject={newProject}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <ProjectModal
-        isOpen={isProjectModalOpen}
+        open={projectModal}
         onClose={() => {
-          setIsProjectModalOpen(false);
-          setProjectToEdit(null);
+          setProjectModal(false);
+          setEditing(null);
         }}
         onSave={handleSaveProject}
-        projectToEdit={projectToEdit}
+        projectToEdit={editing}
       />
-
-      <SupabaseConfigModal
-        isOpen={isSupabaseModalOpen}
-        onClose={() => setIsSupabaseModalOpen(false)}
-        onConfigChanged={() => {
-          loadProjects();
-          if (selectedProjectId) loadDetail(selectedProjectId);
-          addToast('success', 'Pengaturan koneksi Supabase diperbarui.');
-        }}
-      />
-
       <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
         currentUserEmail={userEmail}
         onAuthSuccess={handleAuthSuccess}
         onSignedOut={handleSignedOut}
+        notify={notify}
       />
-
-      <ClearDataModal
-        isOpen={isClearDataModalOpen}
-        onClose={() => setIsClearDataModalOpen(false)}
-        onDataCleared={handleDataCleared}
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onDataChanged={() => {
+          refreshAll();
+          if (selectedId) refreshDetail(selectedId);
+          else setDetail(null);
+        }}
+        notify={notify}
       />
-
-      {/* Mobile Floating Action Button (FAB) for adding new project */}
-      {!selectedProjectId && (
-        <button
-          type="button"
-          onClick={() => {
-            setProjectToEdit(null);
-            setIsProjectModalOpen(true);
-          }}
-          className="sm:hidden fixed bottom-6 right-6 z-40 h-13 w-13 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-600/40 flex items-center justify-center transition-all active:scale-90 border border-indigo-400/30"
-          aria-label="Tambah Proyek Baru"
-        >
-          <Plus className="h-6 w-6 stroke-[2.5]" />
-        </button>
-      )}
-
-      {/* Toast Feedback */}
-      <ToastContainer toasts={toasts} onDismiss={removeToast} />
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

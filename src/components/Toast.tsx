@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
 
 export interface ToastMessage {
   id: string;
@@ -9,38 +9,45 @@ export interface ToastMessage {
   message: string;
 }
 
-interface ToastProps {
+export function ToastContainer({
+  toasts,
+  onDismiss,
+}: {
   toasts: ToastMessage[];
   onDismiss: (id: string) => void;
-}
-
-export function ToastContainer({ toasts, onDismiss }: ToastProps) {
-  if (toasts.length === 0) return null;
-
+}) {
   return (
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
+    <div
+      className="pointer-events-none fixed inset-x-4 bottom-20 z-[70] flex flex-col items-center gap-2 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:items-end"
+      aria-live="polite"
+      aria-atomic="false"
+    >
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl backdrop-blur-md text-xs font-medium animate-fade-in transition-all ${
+          className={`pointer-events-auto flex w-full animate-scale-in items-center gap-2.5 rounded-xl border bg-white py-2.5 pl-3 pr-2 text-[12.5px] font-medium shadow-lg sm:w-auto sm:max-w-sm ${
             t.type === 'success'
-              ? 'bg-zinc-900/95 border-emerald-500/40 text-emerald-300'
+              ? 'border-emerald-200 text-emerald-900'
               : t.type === 'error'
-              ? 'bg-zinc-900/95 border-rose-500/40 text-rose-300'
-              : 'bg-zinc-900/95 border-indigo-500/40 text-indigo-300'
+                ? 'border-rose-200 text-rose-900'
+                : 'border-indigo-200 text-indigo-950'
           }`}
         >
           {t.type === 'success' ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
+          ) : t.type === 'error' ? (
+            <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
           ) : (
-            <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
+            <Info className="h-4 w-4 shrink-0 text-indigo-600" aria-hidden="true" />
           )}
-          <span>{t.message}</span>
+          <span className="flex-1 leading-snug">{t.message}</span>
           <button
+            type="button"
             onClick={() => onDismiss(t.id)}
-            className="text-zinc-500 hover:text-white ml-2 transition-colors"
+            className="icon-btn shrink-0 p-1.5"
+            aria-label="Tutup notifikasi"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </div>
       ))}

@@ -63,36 +63,36 @@ export function getStatusBadge(status: ProjectStatus): { label: string; bg: stri
   switch (status) {
     case 'in_progress':
       return {
-        label: 'Sedang Berjalan',
-        bg: 'bg-sky-500/10 dark:bg-sky-400/10',
-        text: 'text-sky-600 dark:text-sky-400',
-        border: 'border-sky-500/20',
-        dot: 'bg-sky-500 animate-pulse',
+        label: 'Berjalan',
+        bg: 'bg-sky-50',
+        text: 'text-sky-700',
+        border: 'border-sky-200',
+        dot: 'bg-sky-500',
       };
     case 'completed':
       return {
         label: 'Selesai',
-        bg: 'bg-emerald-500/10 dark:bg-emerald-400/10',
-        text: 'text-emerald-600 dark:text-emerald-400',
-        border: 'border-emerald-500/20',
+        bg: 'bg-emerald-50',
+        text: 'text-emerald-700',
+        border: 'border-emerald-200',
         dot: 'bg-emerald-500',
       };
     case 'on_hold':
       return {
         label: 'Tertunda',
-        bg: 'bg-amber-500/10 dark:bg-amber-400/10',
-        text: 'text-amber-600 dark:text-amber-400',
-        border: 'border-amber-500/20',
+        bg: 'bg-amber-50',
+        text: 'text-amber-700',
+        border: 'border-amber-200',
         dot: 'bg-amber-500',
       };
     case 'planning':
     default:
       return {
         label: 'Perencanaan',
-        bg: 'bg-zinc-500/10 dark:bg-zinc-400/10',
-        text: 'text-zinc-600 dark:text-zinc-400',
-        border: 'border-zinc-500/20',
-        dot: 'bg-zinc-400',
+        bg: 'bg-stone-100',
+        text: 'text-stone-600',
+        border: 'border-stone-200',
+        dot: 'bg-stone-400',
       };
   }
 }
@@ -101,32 +101,32 @@ export function getPriorityBadge(priority: ProjectPriority): { label: string; bg
   switch (priority) {
     case 'urgent':
       return {
-        label: 'Urgent',
-        bg: 'bg-rose-500/10',
-        text: 'text-rose-500 dark:text-rose-400',
-        border: 'border-rose-500/30',
+        label: 'Mendesak',
+        bg: 'bg-rose-50',
+        text: 'text-rose-700',
+        border: 'border-rose-200',
       };
     case 'high':
       return {
         label: 'Tinggi',
-        bg: 'bg-amber-500/10',
-        text: 'text-amber-600 dark:text-amber-400',
-        border: 'border-amber-500/20',
+        bg: 'bg-amber-50',
+        text: 'text-amber-700',
+        border: 'border-amber-200',
       };
     case 'medium':
       return {
         label: 'Sedang',
-        bg: 'bg-indigo-500/10',
-        text: 'text-indigo-600 dark:text-indigo-400',
-        border: 'border-indigo-500/20',
+        bg: 'bg-indigo-50',
+        text: 'text-indigo-700',
+        border: 'border-indigo-200',
       };
     case 'low':
     default:
       return {
         label: 'Rendah',
-        bg: 'bg-zinc-500/10',
-        text: 'text-zinc-600 dark:text-zinc-400',
-        border: 'border-zinc-500/20',
+        bg: 'bg-stone-100',
+        text: 'text-stone-600',
+        border: 'border-stone-200',
       };
   }
 }
@@ -134,17 +134,133 @@ export function getPriorityBadge(priority: ProjectPriority): { label: string; bg
 export function getLogTypeMeta(type: LogbookType): { label: string; bg: string; text: string; icon: string } {
   switch (type) {
     case 'daily_update':
-      return { label: 'Daily Update', bg: 'bg-sky-500/10', text: 'text-sky-400', icon: 'Calendar' };
+      return { label: 'Harian', bg: 'bg-sky-50', text: 'text-sky-700', icon: 'Calendar' };
     case 'milestone':
-      return { label: 'Milestone', bg: 'bg-purple-500/10', text: 'text-purple-400', icon: 'Flag' };
+      return { label: 'Milestone', bg: 'bg-violet-50', text: 'text-violet-700', icon: 'Flag' };
     case 'blocker':
-      return { label: 'Kendala / Blocker', bg: 'bg-rose-500/10', text: 'text-rose-400', icon: 'AlertTriangle' };
+      return { label: 'Kendala', bg: 'bg-rose-50', text: 'text-rose-700', icon: 'AlertTriangle' };
     case 'release':
-      return { label: 'Shipment / Release', bg: 'bg-emerald-500/10', text: 'text-emerald-400', icon: 'Rocket' };
+      return { label: 'Rilis', bg: 'bg-emerald-50', text: 'text-emerald-700', icon: 'Rocket' };
     case 'general':
     default:
-      return { label: 'Catatan Umum', bg: 'bg-zinc-500/10', text: 'text-zinc-400', icon: 'FileText' };
+      return { label: 'Catatan', bg: 'bg-stone-100', text: 'text-stone-600', icon: 'FileText' };
   }
+}
+
+/**
+ * Convert markdown logbook content to plain text for PDF tables / exports.
+ * Code blocks collapse to a placeholder, formatting marks are stripped.
+ */
+export function markdownToPlainText(md: string): string {
+  if (!md) return '';
+  let t = md;
+  t = t.replace(/```[\s\S]*?```/g, ' [blok kode] ');
+  t = t.replace(/`([^`]+)`/g, '$1');
+  t = t.replace(/^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/gim, '$1:');
+  t = t.replace(/^>\s?/gm, '');
+  t = t.replace(/^#{1,6}\s+/gm, '');
+  t = t.replace(/^- \[x\]\s+/gim, '✓ ');
+  t = t.replace(/^- \[ \]\s+/gim, '☐ ');
+  t = t.replace(/^[-*]\s+/gm, '• ');
+  t = t.replace(/\*\*\*(.*?)\*\*\*/g, '$1');
+  t = t.replace(/\*\*(.*?)\*\*/g, '$1');
+  t = t.replace(/__([^_]+)__/g, '$1');
+  t = t.replace(/\*([^*\n]+)\*/g, '$1');
+  t = t.replace(/~~(.*?)~~/g, '$1');
+  t = t.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  t = t.replace(/\|/g, ' ');
+  t = t.replace(/^[ :\-]+$/gm, '');
+  t = t.replace(/[ \t]+/g, ' ');
+  t = t.replace(/\n{3,}/g, '\n\n');
+  return t.trim();
+}
+
+/**
+ * Render plain-text project descriptions to HTML:
+ * - blank lines start a new paragraph, single breaks are kept
+ * - lines starting with "- ", "* " or "• " become bullet lists
+ * - consecutive numbered lines ("1. …", "2. …") become ordered lists
+ * - a lone short numbered line ("1. Tujuan Proyek") renders as a heading
+ * - **tebal** renders bold
+ * Input is HTML-escaped first, so this is XSS-safe.
+ */
+export function renderDescriptionToHtml(text: string): string {
+  if (!text || !text.trim()) return '';
+  const esc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const inline = (s: string) =>
+    esc(s).replace(
+      /\*\*([^*]+)\*\*/g,
+      '<strong class="font-semibold text-stone-900">$1</strong>'
+    );
+  const isBullet = (l: string) => /^[-*•]\s+\S/.test(l);
+  const isOrdered = (l: string) => /^\d+[.)]\s+\S/.test(l);
+  const stripBullet = (l: string) => l.replace(/^[-*•]\s+/, '');
+  const stripOrdered = (l: string) => l.replace(/^\d+[.)]\s+/, '');
+
+  const blocks: string[] = [];
+  for (const para of text.split(/\n\s*\n/)) {
+    const lines = para
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (lines.length === 0) continue;
+
+    let buf: string[] = [];
+    const flushBuf = () => {
+      if (buf.length > 0) {
+        blocks.push(`<p class="mt-2 first:mt-0">${buf.join('<br/>')}</p>`);
+        buf = [];
+      }
+    };
+
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (isBullet(line)) {
+        flushBuf();
+        const items: string[] = [];
+        while (i < lines.length && isBullet(lines[i])) {
+          items.push(`<li>${inline(stripBullet(lines[i]))}</li>`);
+          i++;
+        }
+        blocks.push(
+          `<ul class="mt-2 first:mt-0 ml-5 list-disc space-y-1 marker:text-stone-400">${items.join('')}</ul>`
+        );
+        continue;
+      }
+      if (isOrdered(line)) {
+        const group: string[] = [];
+        let j = i;
+        while (j < lines.length && isOrdered(lines[j])) {
+          group.push(lines[j]);
+          j++;
+        }
+        if (group.length >= 2) {
+          flushBuf();
+          blocks.push(
+            `<ol class="mt-2 first:mt-0 ml-5 list-decimal space-y-1 marker:font-semibold marker:text-stone-500">${group
+              .map((t) => `<li>${inline(stripOrdered(t))}</li>`)
+              .join('')}</ol>`
+          );
+          i = j;
+          continue;
+        }
+        flushBuf();
+        if (line.length <= 80) {
+          blocks.push(`<p class="mt-3 first:mt-0 font-semibold text-stone-900">${inline(line)}</p>`);
+        } else {
+          buf.push(inline(line));
+        }
+        i++;
+        continue;
+      }
+      buf.push(inline(line));
+      i++;
+    }
+    flushBuf();
+  }
+  return blocks.join('');
 }
 
 /**
@@ -171,84 +287,84 @@ export function renderMarkdownToHtml(markdown: string): string {
 
   // Fenced Code Blocks: ```lang ... ```
   html = html.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_match, lang, code) => {
-    return `<div class="my-4 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden shadow-md">
-      <div class="flex items-center justify-between px-4 py-2 border-b border-zinc-800/80 bg-zinc-900/60 text-xs font-mono text-zinc-400">
+    return `<div class="my-4 rounded-xl border border-stone-200 bg-stone-950 overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/5 text-xs font-mono text-stone-300">
         <span class="uppercase tracking-wider font-semibold">${lang || 'code'}</span>
-        <span class="text-[11px] text-zinc-500">Snippet</span>
+        <span class="text-[11px] text-stone-400">Snippet</span>
       </div>
-      <pre class="p-4 overflow-x-auto text-xs font-mono text-zinc-200 leading-relaxed"><code>${code.trim()}</code></pre>
+      <pre class="p-4 overflow-x-auto text-xs font-mono text-stone-100 leading-relaxed"><code>${code.trim()}</code></pre>
     </div>`;
   });
 
   // Inline Code `code`
-  html = html.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded bg-zinc-800/90 text-amber-300 font-mono text-[13px] border border-zinc-700/50">$1</code>');
+  html = html.replace(/`([^`]+)`/g, '<code class="px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-800 font-mono text-[13px] border border-stone-200">$1</code>');
 
   // GitHub Callout Alerts: > [!NOTE], > [!TIP], > [!IMPORTANT], > [!WARNING], > [!CAUTION]
   const alertRegex = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\n([\s\S]*?)(?=(?:\n\s*\n|$))/gm;
   html = html.replace(alertRegex, (_match, type, content) => {
     const cleanedContent = content.replace(/^>\s*/gm, '').trim();
-    let border = 'border-sky-500/40';
-    let bg = 'bg-sky-950/20';
-    let text = 'text-sky-300';
+    let border = 'border-sky-500';
+    let bg = 'bg-sky-50';
+    let text = 'text-sky-800';
     let title = 'NOTE';
     let icon = 'ℹ️';
 
     if (type === 'TIP') {
-      border = 'border-emerald-500/40';
-      bg = 'bg-emerald-950/20';
-      text = 'text-emerald-300';
+      border = 'border-emerald-500';
+      bg = 'bg-emerald-50';
+      text = 'text-emerald-800';
       title = 'TIP';
       icon = '💡';
     } else if (type === 'IMPORTANT') {
-      border = 'border-purple-500/40';
-      bg = 'bg-purple-950/20';
-      text = 'text-purple-300';
+      border = 'border-violet-500';
+      bg = 'bg-violet-50';
+      text = 'text-violet-800';
       title = 'IMPORTANT';
       icon = '📌';
     } else if (type === 'WARNING') {
-      border = 'border-amber-500/40';
-      bg = 'bg-amber-950/20';
-      text = 'text-amber-300';
+      border = 'border-amber-500';
+      bg = 'bg-amber-50';
+      text = 'text-amber-800';
       title = 'WARNING';
       icon = '⚠️';
     } else if (type === 'CAUTION') {
-      border = 'border-rose-500/40';
-      bg = 'bg-rose-950/20';
-      text = 'text-rose-300';
+      border = 'border-rose-500';
+      bg = 'bg-rose-50';
+      text = 'text-rose-800';
       title = 'CAUTION';
       icon = '🛑';
     }
 
-    return `<div class="my-4 p-4 rounded-xl border-l-4 ${border} ${bg} text-zinc-200 text-sm">
+    return `<div class="my-4 p-4 rounded-xl border-l-4 ${border} ${bg} text-stone-700 text-sm">
       <div class="flex items-center gap-2 font-semibold ${text} mb-1.5">
         <span>${icon}</span>
         <span class="tracking-wide text-xs uppercase">${title}</span>
       </div>
-      <div class="text-zinc-300 leading-relaxed pl-6">${cleanedContent.replace(/\n/g, '<br/>')}</div>
+      <div class="text-stone-600 leading-relaxed pl-6">${cleanedContent.replace(/\n/g, '<br/>')}</div>
     </div>`;
   });
 
   // Standard Blockquotes: > quote
-  html = html.replace(/^>\s*(.+)$/gm, '<blockquote class="border-l-2 border-indigo-500 pl-4 py-1.5 my-2.5 text-zinc-400 italic bg-indigo-500/5 rounded-r">$1</blockquote>');
+  html = html.replace(/^>\s*(.+)$/gm, '<blockquote class="border-l-2 border-indigo-400 pl-4 py-1.5 my-2.5 text-stone-500 italic bg-indigo-50/60 rounded-r">$1</blockquote>');
 
   // Headings
-  html = html.replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold text-zinc-100 mt-5 mb-2.5 tracking-tight flex items-center gap-2"><span class="w-1.5 h-4 bg-sky-500 rounded-full inline-block"></span>$1</h3>');
-  html = html.replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold text-white mt-6 mb-3 tracking-tight border-b border-zinc-800 pb-1.5">$1</h2>');
-  html = html.replace(/^# (.*$)/gim, '<h1 class="text-2xl font-extrabold text-white mt-7 mb-4 tracking-tight pb-2 border-b border-zinc-800">$1</h1>');
-  html = html.replace(/^#### (.*$)/gim, '<h4 class="text-base font-semibold text-zinc-200 mt-4 mb-2 tracking-tight">$1</h4>');
+  html = html.replace(/^### (.*$)/gim, '<h3 class="text-lg font-bold text-stone-900 mt-5 mb-2.5 tracking-tight flex items-center gap-2"><span class="w-1.5 h-4 bg-sky-500 rounded-full inline-block"></span>$1</h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold text-stone-900 mt-6 mb-3 tracking-tight border-b border-stone-200 pb-1.5">$1</h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1 class="text-2xl font-extrabold text-stone-900 mt-7 mb-4 tracking-tight pb-2 border-b border-stone-200">$1</h1>');
+  html = html.replace(/^#### (.*$)/gim, '<h4 class="text-base font-semibold text-stone-800 mt-4 mb-2 tracking-tight">$1</h4>');
 
   // Interactive Checklist: - [x] and - [ ]
-  html = html.replace(/^- \[x\] (.*)$/gim, '<div class="flex items-start gap-2.5 my-1.5 text-sm text-zinc-300"><span class="inline-flex items-center justify-center w-4 h-4 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 mt-0.5 text-xs">✓</span><span class="line-through text-zinc-400">$1</span></div>');
-  html = html.replace(/^- \[ \] (.*)$/gim, '<div class="flex items-start gap-2.5 my-1.5 text-sm text-zinc-300"><span class="inline-flex items-center justify-center w-4 h-4 rounded bg-zinc-800 border border-zinc-700 mt-0.5"></span><span>$1</span></div>');
+  html = html.replace(/^- \[x\] (.*)$/gim, '<div class="flex items-start gap-2.5 my-1.5 text-sm text-stone-600"><span class="inline-flex items-center justify-center w-4 h-4 rounded bg-emerald-100 text-emerald-700 border border-emerald-300 mt-0.5 text-xs">✓</span><span class="line-through text-stone-400">$1</span></div>');
+  html = html.replace(/^- \[ \] (.*)$/gim, '<div class="flex items-start gap-2.5 my-1.5 text-sm text-stone-600"><span class="inline-flex items-center justify-center w-4 h-4 rounded bg-white border border-stone-300 mt-0.5"></span><span>$1</span></div>');
 
   // Bullet Lists: - item or * item
-  html = html.replace(/^[-*]\s+(.*)$/gim, '<li class="text-zinc-300 ml-4 list-disc my-1 text-sm leading-relaxed">$1</li>');
+  html = html.replace(/^[-*]\s+(.*)$/gim, '<li class="text-stone-600 ml-4 list-disc my-1 text-sm leading-relaxed">$1</li>');
 
   // Bold & Italic
-  html = html.replace(/\*\*\*(.*?)\*\*\*/g, '<strong class="font-bold italic text-zinc-100">$1</strong>');
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-zinc-100">$1</strong>');
-  html = html.replace(/\*(.*?)\*/g, '<em class="italic text-zinc-300">$1</em>');
-  html = html.replace(/~~(.*?)~~/g, '<del class="line-through text-zinc-500">$1</del>');
+  html = html.replace(/\*\*\*(.*?)\*\*\*/g, '<strong class="font-bold italic text-stone-900">$1</strong>');
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-stone-900">$1</strong>');
+  html = html.replace(/\*(.*?)\*/g, '<em class="italic text-stone-600">$1</em>');
+  html = html.replace(/~~(.*?)~~/g, '<del class="line-through text-stone-400">$1</del>');
 
   // Markdown Tables:
   // Detect rows like | a | b |
@@ -268,19 +384,19 @@ export function renderMarkdownToHtml(markdown: string): string {
       if (!inTable) {
         inTable = true;
         tableHeaderParsed = false;
-        processedLines.push('<div class="overflow-x-auto my-4 rounded-xl border border-zinc-800"><table class="w-full text-left text-sm">');
+        processedLines.push('<div class="overflow-x-auto my-4 rounded-xl border border-stone-200"><table class="w-full text-left text-sm">');
       }
       if (!tableHeaderParsed) {
         tableHeaderParsed = true;
-        processedLines.push('<thead class="bg-zinc-900 text-zinc-300 text-xs font-semibold border-b border-zinc-800"><tr>');
+        processedLines.push('<thead class="bg-stone-100 text-stone-700 text-xs font-semibold border-b border-stone-200"><tr>');
         cells.forEach((cell) => {
           processedLines.push(`<th class="px-4 py-2.5 font-medium">${cell}</th>`);
         });
-        processedLines.push('</tr></thead><tbody class="divide-y divide-zinc-800/60 bg-zinc-950/50">');
+        processedLines.push('</tr></thead><tbody class="divide-y divide-stone-100 bg-white">');
       } else {
-        processedLines.push('<tr class="hover:bg-zinc-900/30 transition-colors">');
+        processedLines.push('<tr class="hover:bg-stone-50 transition-colors">');
         cells.forEach((cell) => {
-          processedLines.push(`<td class="px-4 py-2.5 text-zinc-300">${cell}</td>`);
+          processedLines.push(`<td class="px-4 py-2.5 text-stone-600">${cell}</td>`);
         });
         processedLines.push('</tr>');
       }

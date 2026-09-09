@@ -560,3 +560,159 @@ export function resetToInitialSeed(): void {
   localStorage.setItem(STORAGE_KEYS.LOGBOOKS, JSON.stringify(INITIAL_LOGBOOKS));
 }
 
+// ==========================================
+// CROSS-PROJECT QUERIES (dashboard views)
+// ==========================================
+
+/** All tasks across projects, newest first. Single query — no N+1. */
+export async function fetchAllTasks(): Promise<Task[]> {
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) return data as Task[];
+    } catch (err) {
+      console.warn('fetchAllTasks Supabase notice:', err);
+    }
+  }
+  return getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
+}
+
+/** Most recent logbook entries across every project. */
+export async function fetchRecentLogbooks(limit = 12): Promise<LogbookEntry[]> {
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('logbooks')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (!error && data) return data as LogbookEntry[];
+    } catch (err) {
+      console.warn('fetchRecentLogbooks Supabase notice:', err);
+    }
+  }
+  const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
+  return [...logs]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, limit);
+}
+
+/** All milestones across projects. */
+export async function fetchAllMilestones(): Promise<Milestone[]> {
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase.from('milestones').select('*');
+      if (!error && data) return data as Milestone[];
+    } catch (err) {
+      console.warn('fetchAllMilestones Supabase notice:', err);
+    }
+  }
+  return getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
+}
+
+/** Duplicate a project with its tasks & milestones under new ids. */
+export async function duplicateProject(id: string): Promise<Project | null> {
+  const detail = await fetchProjectDetail(id);
+  if (!detail) return null;
+  const now = new Date().toISOString();
+  const copy = await saveProject({
+    title: `${detail.title} (salinan)`,
+    description: detail.description,
+    category: detail.category,
+    status: 'planning',
+    priority: detail.priority,
+    progress_percent: 0,
+    start_date: now.split('T')[0],
+    due_date: detail.due_date,
+    tags: detail.tags,
+    user_email: detail.user_email,
+  });
+  for (const m of detail.milestones) {
+    await saveMilestone({
+      project_id: copy.id,
+      title: m.title,
+      due_date: m.due_date,
+      is_completed: false,
+    });
+  }
+  for (const t of detail.tasks) {
+    await saveTask({
+      project_id: copy.id,
+      title: t.title,
+      status: 'todo',
+      priority: t.priority,
+      due_date: t.due_date,
+    });
+  }
+  return copy;
+}
+
+// ==========================================
+// BACKUP: EXPORT / IMPORT JSON
+// ==========================================
+
+export interface BackupPayload {
+  app: 'trackpro';
+  version: 1;
+  exported_at: string;
+  projects: Project[];
+  milestones: Milestone[];
+  tasks: Task[];
+  logbooks: LogbookEntry[];
+}
+
+/** Gather the full workspace into one portable JSON object. */
+export async function exportAllData(): Promise<BackupPayload> {
+  const [projects, tasks, milestones, logbooks] = await Promise.all([
+    fetchProjects(),
+    fetchAllTasks(),
+    fetchAllMilestones(),
+    fetchRecentLogbooks(500),
+  ]);
+  return {
+    app: 'trackpro',
+    version: 1,
+    exported_at: new Date().toISOString(),
+    projects,
+    milestones,
+    tasks,
+    logbooks,
+  };
+}
+
+/** Restore a backup file. Returns counts per collection. */
+export async function importAllData(
+  payload: BackupPayload
+): Promise<{ success: boolean; message: string }> {
+  try {
+    if (!payload || payload.app !== 'trackpro' || !Array.isArray(payload.projects)) {
+      return { success: false, message: 'File bukan backup Tracker Nexus yang valid.' };
+    }
+    setLocal(STORAGE_KEYS.PROJECTS, payload.projects);
+    setLocal(STORAGE_KEYS.MILESTONES, payload.milestones || []);
+    setLocal(STORAGE_KEYS.TASKS, payload.tasks || []);
+    setLocal(STORAGE_KEYS.LOGBOOKS, payload.logbooks || []);
+
+    if (isSupabaseConfigured()) {
+      try {
+        if (payload.projects.length > 0) await supabase.from('projects').upsert(payload.projects);
+        if ((payload.milestones || []).length > 0) await supabase.from('milestones').upsert(payload.milestones);
+        if ((payload.tasks || []).length > 0) await supabase.from('tasks').upsert(payload.tasks);
+        if ((payload.logbooks || []).length > 0) await supabase.from('logbooks').upsert(payload.logbooks);
+      } catch (err) {
+        console.warn('importAllData cloud sync notice:', err);
+      }
+    }
+    return {
+      success: true,
+      message: `Backup dipulihkan: ${payload.projects.length} proyek, ${(payload.tasks || []).length} tugas, ${(payload.logbooks || []).length} log.`,
+    };
+  } catch (err) {
+    console.error('importAllData error:', err);
+    return { success: false, message: 'Gagal membaca file backup.' };
+  }
+}
+

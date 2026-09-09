@@ -1,497 +1,329 @@
 'use client';
 
 import React from 'react';
-import { 
-  X, 
-  ShieldCheck, 
-  Lock, 
-  Mail, 
-  KeyRound, 
-  CheckCircle2, 
-  AlertTriangle, 
-  LogOut, 
-  UploadCloud,
+import {
+  AlertTriangle,
+  CheckCircle2,
   Eye,
   EyeOff,
+  KeyRound,
+  Loader,
+  LogOut,
+  Mail,
   MailCheck,
-  Send,
-  ArrowLeft,
   RefreshCw,
-  Sparkles
+  ShieldCheck,
+  UploadCloud,
+  X,
 } from 'lucide-react';
-import { 
-  signInWithEmailPassword, 
-  signUpWithEmailPassword, 
-  verifyEmailOtp,
+import {
   resendConfirmationEmail,
-  signOutAuth 
+  signInWithEmailPassword,
+  signOutAuth,
+  signUpWithEmailPassword,
+  verifyEmailOtp,
 } from '@/lib/supabase';
 import { syncLocalDataToSupabase } from '@/lib/project-service';
 
 interface AuthModalProps {
-  isOpen: boolean;
+  open: boolean;
   onClose: () => void;
-  currentUserEmail?: string;
+  currentUserEmail: string;
   onAuthSuccess: (email: string) => void;
   onSignedOut: () => void;
+  notify: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
-type AuthView = 'signin' | 'signup' | 'confirm_pending';
+type View = 'signin' | 'signup' | 'confirm';
 
-export function AuthModal({
-  isOpen,
-  onClose,
-  currentUserEmail,
-  onAuthSuccess,
-  onSignedOut,
-}: AuthModalProps) {
-  const [view, setView] = React.useState<AuthView>('signin');
+export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSignedOut, notify }: AuthModalProps) {
+  const [view, setView] = React.useState<View>('signin');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [otpToken, setOtpToken] = React.useState('');
-  const [showPassword, setShowPassword] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [isSyncing, setIsSyncing] = React.useState(false);
-  const [isResending, setIsResending] = React.useState(false);
-  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = React.useState<string | null>(null);
+  const [otp, setOtp] = React.useState('');
+  const [showPw, setShowPw] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [syncing, setSyncing] = React.useState(false);
+  const [resending, setResending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (isOpen) {
-      setErrorMsg(null);
-      setSuccessMsg(null);
-      setOtpToken('');
-      if (currentUserEmail) {
-        setEmail(currentUserEmail);
-      } else {
-        setView('signin');
-      }
+    if (open) {
+      setError(null);
+      setOtp('');
+      if (currentUserEmail) setEmail(currentUserEmail);
+      else setView('signin');
     }
-  }, [isOpen, currentUserEmail]);
+  }, [open, currentUserEmail]);
 
-  if (!isOpen) return null;
+  if (!open) return null;
 
-  // Handle Form Submit: Sign In or Sign Up
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail || !password) {
-      setErrorMsg('Harap masukkan alamat email dan kata sandi.');
+    setError(null);
+    const clean = email.trim().toLowerCase();
+    if (!clean || !password) {
+      setError('Isi email & kata sandi dulu.');
       return;
     }
-
     if (password.length < 6) {
-      setErrorMsg('Kata sandi minimal terdiri dari 6 karakter.');
+      setError('Kata sandi minimal 6 karakter.');
       return;
     }
-
-    setIsLoading(true);
-
-    if (view === 'signup') {
-      // 1. REGISTER NEW ACCOUNT
-      const { user, session, needsConfirmation, error } = await signUpWithEmailPassword(cleanEmail, password);
-      setIsLoading(false);
-
-      if (error) {
-        setErrorMsg(`Gagal mendaftar: ${error.message}`);
-        return;
-      }
-
-      if (needsConfirmation) {
-        // MUST CONFIRM FIRST: DO NOT LOG IN AUTOMATICALLY
-        setView('confirm_pending');
-        setSuccessMsg(`Tautan konfirmasi telah dikirim ke ${cleanEmail}. Buka email Anda untuk konfirmasi.`);
-      } else if (session && user) {
-        // Email confirmation is disabled on Supabase
-        const registeredEmail = user.email || cleanEmail;
-        setSuccessMsg('Akun berhasil dibuat dan terhubung!');
-        onAuthSuccess(registeredEmail);
-        setTimeout(() => onClose(), 800);
-      }
-    } else {
-      // 2. SIGN IN TO EXISTING ACCOUNT
-      const { user, session, isNotConfirmed, error } = await signInWithEmailPassword(cleanEmail, password);
-      setIsLoading(false);
-
-      if (error) {
-        if (isNotConfirmed) {
-          setErrorMsg('⚠️ Akun ini belum dikonfirmasi! Silakan periksa inbox email Anda dan klik tautan konfirmasi sebelum masuk.');
-        } else {
-          setErrorMsg(`Gagal masuk: ${error.message}`);
+    setBusy(true);
+    try {
+      if (view === 'signup') {
+        const res = await signUpWithEmailPassword(clean, password);
+        if (res.error) {
+          setError(`Gagal daftar: ${res.error.message}. Coba lagi.`);
+          return;
         }
+        if (res.needsConfirmation) {
+          setView('confirm');
+          notify('info', `Tautan konfirmasi dikirim ke ${clean}.`);
+        } else if (res.user) {
+          onAuthSuccess(res.user.email || clean);
+          onClose();
+        }
+      } else {
+        const res = await signInWithEmailPassword(clean, password);
+        if (res.error) {
+          setError(
+            res.isNotConfirmed
+              ? 'Akun belum dikonfirmasi. Cek inbox email Anda, lalu klik tautan konfirmasi.'
+              : `Gagal masuk: ${res.error.message}. Periksa kembali email & sandi.`
+          );
+          return;
+        }
+        if (res.user) {
+          onAuthSuccess(res.user.email || clean);
+          onClose();
+        }
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otp.trim()) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await verifyEmailOtp(email.trim().toLowerCase(), otp.trim());
+      if (res.error) {
+        setError(`Kode tidak valid: ${res.error.message}. Minta kirim ulang bila perlu.`);
         return;
       }
-
-      if (session && user) {
-        const loggedInEmail = user.email || cleanEmail;
-        setSuccessMsg('Berhasil masuk ke akun terproteksi!');
-        onAuthSuccess(loggedInEmail);
-        setTimeout(() => onClose(), 800);
+      if (res.user) {
+        onAuthSuccess(res.user.email || email.trim().toLowerCase());
+        onClose();
       }
+    } finally {
+      setBusy(false);
     }
   };
 
-  // Handle OTP Token verification (if email provider sent OTP code)
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otpToken.trim()) return;
-
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    setIsLoading(true);
-
-    const cleanEmail = email.trim().toLowerCase();
-    const { user, error } = await verifyEmailOtp(cleanEmail, otpToken.trim());
-    setIsLoading(false);
-
-    if (error) {
-      setErrorMsg(`Token tidak valid atau kedaluwarsa: ${error.message}`);
-      return;
-    }
-
-    if (user) {
-      const verifiedEmail = user.email || cleanEmail;
-      setSuccessMsg('Email berhasil dikonfirmasi dan akun kini aktif!');
-      onAuthSuccess(verifiedEmail);
-      setTimeout(() => onClose(), 900);
-    }
+  const resend = async () => {
+    const clean = email.trim().toLowerCase();
+    if (!clean) return;
+    setResending(true);
+    setError(null);
+    const { error: err } = await resendConfirmationEmail(clean);
+    setResending(false);
+    if (err) setError(`Gagal mengirim ulang: ${err.message}.`);
+    else notify('success', `Email konfirmasi baru dikirim ke ${clean}.`);
   };
 
-  // Resend confirmation email
-  const handleResend = async () => {
-    const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail) return;
-
-    setIsResending(true);
-    setErrorMsg(null);
-    const { error } = await resendConfirmationEmail(cleanEmail);
-    setIsResending(false);
-
-    if (error) {
-      setErrorMsg(`Gagal mengirim ulang: ${error.message}`);
-    } else {
-      setSuccessMsg(`Email konfirmasi baru telah dikirimkan ke ${cleanEmail}.`);
-    }
-  };
-
-  const handleSignOut = async () => {
-    setIsLoading(true);
+  const signOut = async () => {
+    setBusy(true);
     await signOutAuth();
-    setIsLoading(false);
+    setBusy(false);
     onSignedOut();
     onClose();
   };
 
-  const handleUploadLocal = async () => {
+  const upload = async () => {
     if (!currentUserEmail) return;
-    setIsSyncing(true);
+    setSyncing(true);
     const res = await syncLocalDataToSupabase(currentUserEmail);
-    setIsSyncing(false);
-    if (res.success) {
-      setSuccessMsg(`Berhasil menyinkronkan ${res.count} proyek ke akun ${currentUserEmail}!`);
-    } else {
-      setErrorMsg('Gagal menyinkronkan data lokal ke database.');
-    }
+    setSyncing(false);
+    if (res.success) notify('success', `${res.count} proyek disinkron ke ${currentUserEmail}.`);
+    else notify('error', 'Gagal sinkron. Pastikan cloud tersambung di Pengaturan.');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/85 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Modal Dialog */}
-      <div className="relative w-full max-w-md max-h-[92vh] flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl p-4.5 sm:p-7 z-10 animate-fade-in my-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-zinc-800 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
-              {view === 'confirm_pending' ? (
-                <MailCheck className="h-4.5 w-4.5 text-amber-400" />
-              ) : (
-                <ShieldCheck className="h-4.5 w-4.5" />
-              )}
-            </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                {currentUserEmail
-                  ? 'Akun Terverifikasi'
-                  : view === 'confirm_pending'
-                  ? 'Konfirmasi Email Diperlukan'
-                  : view === 'signin'
-                  ? 'Masuk ke Akun'
-                  : 'Daftar Akun Baru'}
-              </h2>
-              <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5">
-                {view === 'confirm_pending'
-                  ? 'Verifikasi email sebelum akun dapat terhubung'
-                  : 'Autentikasi aman terenkripsi via Supabase'}
-              </p>
-            </div>
+    <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label="Akun">
+      <div className="modal-backdrop" onClick={onClose} />
+      <div className="modal-panel relative flex max-h-[92vh] w-full animate-scale-in flex-col overflow-hidden rounded-t-3xl border border-stone-200 bg-white shadow-2xl sm:max-w-md sm:rounded-3xl">
+        <div className="flex items-center gap-2.5 border-b border-stone-100 px-5 py-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600" aria-hidden="true">
+            <ShieldCheck className="h-[18px] w-[18px]" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[15px] font-bold tracking-tight text-stone-900">
+              {currentUserEmail ? 'Akun Anda' : view === 'confirm' ? 'Konfirmasi email' : view === 'signin' ? 'Masuk' : 'Buat akun'}
+            </h2>
+            <p className="truncate text-[12px] text-stone-500">
+              {currentUserEmail ? currentUserEmail : 'Sinkron aman antar-device via cloud'}
+            </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-          >
-            <X className="h-5 w-5" />
+          <button type="button" onClick={onClose} className="icon-btn shrink-0 p-2" aria-label="Tutup">
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
-        {/* 1. ALREADY LOGGED IN STATE */}
-        {currentUserEmail ? (
-          <div className="mt-4 sm:mt-5 space-y-4 overflow-y-auto pr-1">
-            <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20 text-xs text-emerald-300">
-              <div className="flex items-center gap-2 font-bold text-sm text-emerald-400 mb-1">
-                <CheckCircle2 className="h-4 w-4" />
-                <span>Akun Terverifikasi & Terproteksi</span>
-              </div>
-              <p className="text-emerald-200/80 leading-relaxed">
-                Anda terhubung sebagai <strong className="font-mono text-emerald-300">{currentUserEmail}</strong>. Semua progres, task, dan logbook dienkripsi dan disinkronkan secara aman.
+        <div className="overflow-y-auto px-5 py-4">
+          {currentUserEmail ? (
+            <div className="space-y-3">
+              <p className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-[12.5px] leading-relaxed text-emerald-900">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
+                Masuk sebagai <strong>{currentUserEmail}</strong>. Data tersinkron otomatis ke semua perangkat.
               </p>
-            </div>
-
-            {successMsg && (
-              <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-950/30 text-xs text-emerald-300 flex items-center gap-2 animate-fade-in">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                <span>{successMsg}</span>
-              </div>
-            )}
-
-            <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs space-y-2">
-              <div className="flex justify-between items-center text-zinc-400">
-                <span>Status Multi-Device:</span>
-                <span className="text-emerald-400 font-semibold flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Auto-Sync Aktif
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-zinc-400">
-                <span>Status Email:</span>
-                <span className="text-emerald-400 font-medium">Terkonfirmasi & Sah</span>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 pt-2 border-t border-zinc-800">
-              <button
-                type="button"
-                onClick={handleUploadLocal}
-                disabled={isSyncing}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-indigo-500/30 bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 text-xs font-semibold transition-all disabled:opacity-50"
-              >
-                <UploadCloud className="h-4 w-4" />
-                <span>{isSyncing ? 'Menyinkronkan...' : 'Unggah Data Lokal ke Akun Cloud Ini'}</span>
+              <button type="button" onClick={upload} disabled={syncing} className="btn-secondary w-full px-4 py-2.5 text-[12.5px]">
+                {syncing ? <Loader className="h-4 w-4 animate-spin" aria-hidden="true" /> : <UploadCloud className="h-4 w-4" aria-hidden="true" />}
+                {syncing ? 'Menyinkron…' : 'Unggah data lokal ke cloud'}
               </button>
-
-              <button
-                type="button"
-                onClick={handleSignOut}
-                disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 hover:text-rose-400 text-xs font-semibold transition-colors"
-              >
-                <LogOut className="h-4 w-4" />
-                <span>Keluar dari Akun (Sign Out)</span>
+              <button type="button" onClick={signOut} disabled={busy} className="btn-secondary w-full px-4 py-2.5 text-[12.5px] text-rose-700 hover:border-rose-300 hover:bg-rose-50">
+                <LogOut className="h-4 w-4" aria-hidden="true" /> Keluar
               </button>
             </div>
-          </div>
-        ) : view === 'confirm_pending' ? (
-          /* 2. CONFIRMATION PENDING SCREEN (MANDATORY VERIFICATION) */
-          <div className="mt-4 sm:mt-5 space-y-4 animate-fade-in overflow-y-auto pr-1">
-            <div className="text-center py-2">
-              <div className="h-14 w-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto mb-3 text-amber-400 shadow-lg shadow-amber-500/10">
-                <MailCheck className="h-7 w-7" />
-              </div>
-              <h3 className="text-base font-bold text-white">Periksa Email Anda</h3>
-              <p className="text-xs text-zinc-400 mt-1 max-w-xs mx-auto leading-relaxed">
-                Tautan verifikasi telah dikirimkan ke:
-              </p>
-              <div className="mt-2 inline-block px-3 py-1 rounded-lg bg-zinc-800 font-mono text-xs font-semibold text-amber-300 border border-zinc-700">
-                {email}
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-300 space-y-2 leading-relaxed">
-              <div className="flex items-start gap-2">
-                <span className="h-5 w-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
-                  1
+          ) : view === 'confirm' ? (
+            <div className="space-y-3">
+              <div className="py-1 text-center">
+                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600" aria-hidden="true">
+                  <MailCheck className="h-6 w-6" />
                 </span>
-                <span>Buka inbox atau folder spam di email Anda.</span>
+                <h3 className="mt-3 text-[14px] font-bold text-stone-900">Cek inbox Anda</h3>
+                <p className="mx-auto mt-1 max-w-xs text-[12.5px] leading-relaxed text-stone-500">
+                  Tautan konfirmasi dikirim ke <strong className="mono text-stone-700">{email}</strong>. Klik tautan itu, lalu masuk.
+                </p>
               </div>
-              <div className="flex items-start gap-2">
-                <span className="h-5 w-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
-                  2
-                </span>
-                <span>Klik tautan <strong>Confirm your email</strong> pada pesan dari Supabase.</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="h-5 w-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-[11px] shrink-0 mt-0.5">
-                  3
-                </span>
-                <span>Setelah terkonfirmasi, Anda dapat langsung masuk ke web app.</span>
-              </div>
-            </div>
-
-            {/* Optional OTP Code input */}
-            <form onSubmit={handleVerifyOtp} className="pt-2">
-              <label className="block text-[11px] text-zinc-400 mb-1">
-                Atau masukkan kode token verifikasi 6-digit (jika ada):
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Kode 6-digit"
-                  value={otpToken}
-                  onChange={(e) => setOtpToken(e.target.value)}
-                  className="flex-1 px-3 py-2 rounded-xl border border-zinc-700 bg-zinc-950 text-white font-mono text-xs text-center tracking-widest uppercase focus:outline-none focus:border-indigo-500"
-                />
-                <button
-                  type="submit"
-                  disabled={isLoading || !otpToken.trim()}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold disabled:opacity-40 transition-all"
-                >
-                  {isLoading ? '...' : 'Verifikasi'}
+              <form onSubmit={verify} className="space-y-2">
+                <label htmlFor="otp" className="field-label">
+                  Punya kode 6 digit? Masukkan di sini (opsional)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="otp"
+                    autoComplete="one-time-code"
+                    inputMode="numeric"
+                    placeholder="000000"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    className="field mono flex-1 px-3 py-2 text-center text-[13px] uppercase tracking-[0.2em]"
+                  />
+                  <button type="submit" disabled={busy || !otp.trim()} className="btn-primary shrink-0 px-4 py-2 text-[12.5px]">
+                    Verifikasi
+                  </button>
+                </div>
+              </form>
+              {error ? (
+                <p role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[12px] text-rose-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {error}
+                </p>
+              ) : null}
+              <div className="flex items-center justify-between border-t border-stone-100 pt-3 text-[12.5px]">
+                <button type="button" onClick={resend} disabled={resending} className="inline-flex items-center gap-1.5 font-medium text-stone-500 hover:text-stone-900">
+                  <RefreshCw className={`h-3.5 w-3.5 ${resending ? 'animate-spin' : ''}`} aria-hidden="true" />
+                  {resending ? 'Mengirim…' : 'Kirim ulang'}
+                </button>
+                <button type="button" onClick={() => { setView('signin'); setError(null); }} className="font-semibold text-indigo-700 hover:text-indigo-800">
+                  Sudah konfirmasi? Masuk
                 </button>
               </div>
-            </form>
-
-            {/* Resend button */}
-            <div className="flex items-center justify-between pt-2 text-xs border-t border-zinc-800">
-              <button
-                type="button"
-                onClick={handleResend}
-                disabled={isResending}
-                className="text-zinc-400 hover:text-white flex items-center gap-1.5 transition-colors"
-              >
-                <RefreshCw className={`h-3 w-3 ${isResending ? 'animate-spin' : ''}`} />
-                <span>{isResending ? 'Mengirim...' : 'Kirim Ulang Email'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setView('signin');
-                  setErrorMsg(null);
-                  setSuccessMsg(null);
-                }}
-                className="text-indigo-400 hover:text-indigo-300 font-semibold"
-              >
-                Sudah Konfirmasi? Masuk →
-              </button>
             </div>
-          </div>
-        ) : (
-          /* 3. SIGN IN / SIGN UP FORM */
-          <form onSubmit={handleSubmit} className="mt-4 sm:mt-5 space-y-3.5 sm:space-y-4 overflow-y-auto pr-1">
-            {errorMsg && (
-              <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-950/25 text-xs text-rose-300 flex items-start gap-2.5 animate-fade-in">
-                <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
-                <div className="leading-relaxed">
-                  {errorMsg}
-                  {errorMsg.includes('belum dikonfirmasi') && (
-                    <div className="mt-2 pt-2 border-t border-rose-500/20">
-                      <button
-                        type="button"
-                        onClick={handleResend}
-                        disabled={isResending}
-                        className="text-white bg-rose-900/50 hover:bg-rose-900/80 px-2.5 py-1 rounded-lg text-[11px] font-medium border border-rose-500/30"
-                      >
-                        {isResending ? 'Mengirim...' : 'Kirim Ulang Email Konfirmasi'}
+          ) : (
+            <form onSubmit={submit} className="space-y-3.5">
+              {error ? (
+                <p role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[12px] leading-relaxed text-rose-800">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>
+                    {error}
+                    {error.includes('belum dikonfirmasi') ? (
+                      <button type="button" onClick={resend} disabled={resending} className="mt-1.5 block rounded-lg bg-white px-2.5 py-1 text-[11.5px] font-semibold text-rose-700 shadow-sm">
+                        {resending ? 'Mengirim…' : 'Kirim ulang email konfirmasi'}
                       </button>
-                    </div>
-                  )}
+                    ) : null}
+                  </span>
+                </p>
+              ) : null}
+              <div>
+                <label htmlFor="auth-email" className="field-label">
+                  Email
+                </label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
+                  <input
+                    id="auth-email"
+                    name="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    spellCheck={false}
+                    placeholder="anda@email.com…"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="field py-2.5 pl-10 pr-3.5 text-[13px]"
+                  />
                 </div>
               </div>
-            )}
-
-            {successMsg && (
-              <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-950/25 text-xs text-emerald-300 flex items-start gap-2.5 animate-fade-in">
-                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                <div className="leading-relaxed">{successMsg}</div>
+              <div>
+                <label htmlFor="auth-pass" className="field-label">
+                  Kata sandi
+                </label>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
+                  <input
+                    id="auth-pass"
+                    name={view === 'signin' ? 'current-password' : 'new-password'}
+                    type={showPw ? 'text' : 'password'}
+                    required
+                    autoComplete={view === 'signin' ? 'current-password' : 'new-password'}
+                    placeholder="Minimal 6 karakter…"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="field py-2.5 pl-10 pr-10 text-[13px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw((v) => !v)}
+                    className="icon-btn absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5"
+                    aria-label={showPw ? 'Sembunyikan sandi' : 'Tampilkan sandi'}
+                    aria-pressed={showPw}
+                  >
+                    {showPw ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                  </button>
+                </div>
               </div>
-            )}
-
-            {/* Email Field */}
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Alamat Email
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-2.5 h-4 w-4 text-zinc-500" />
-                <input
-                  type="email"
-                  required
-                  placeholder="anda@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-zinc-700 bg-zinc-950 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-indigo-500 transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Password Field */}
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                Kata Sandi (Password)
-              </label>
-              <div className="relative">
-                <KeyRound className="absolute left-3.5 top-2.5 h-4 w-4 text-zinc-500" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  placeholder="Minimal 6 karakter"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-zinc-700 bg-zinc-950 text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-indigo-500 transition-all"
-                />
+              <div className="flex items-center justify-between text-[12.5px]">
+                <span className="text-stone-500">{view === 'signin' ? 'Belum punya akun?' : 'Sudah punya akun?'}</span>
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300"
+                  onClick={() => {
+                    setView(view === 'signin' ? 'signup' : 'signin');
+                    setError(null);
+                  }}
+                  className="font-semibold text-indigo-700 hover:text-indigo-800"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {view === 'signin' ? 'Daftar' : 'Masuk'}
                 </button>
               </div>
-            </div>
-
-            {/* Mode Switcher */}
-            <div className="flex items-center justify-between text-xs pt-1">
-              <span className="text-zinc-400">
-                {view === 'signin' ? 'Belum punya akun?' : 'Sudah punya akun?'}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setView(view === 'signin' ? 'signup' : 'signin');
-                  setErrorMsg(null);
-                  setSuccessMsg(null);
-                }}
-                className="text-indigo-400 hover:text-indigo-300 font-semibold"
-              >
-                {view === 'signin' ? 'Daftar Akun Baru' : 'Masuk ke Akun'}
+              <button type="submit" disabled={busy} className="btn-primary w-full py-2.5 text-[13px]">
+                {busy ? (
+                  <>
+                    <Loader className="h-4 w-4 animate-spin" aria-hidden="true" /> Memproses…
+                  </>
+                ) : view === 'signin' ? (
+                  'Masuk'
+                ) : (
+                  'Daftar & kirim konfirmasi'
+                )}
               </button>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full mt-2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50"
-            >
-              {isLoading
-                ? 'Memproses...'
-                : view === 'signin'
-                ? 'Masuk ke Akun'
-                : 'Daftar Akun (Kirim Konfirmasi)'}
-            </button>
-
-            {view === 'signup' && (
-              <p className="text-[11px] text-zinc-500 text-center leading-relaxed">
-                *Tautan konfirmasi akan dikirimkan ke email Anda. Akun harus dikonfirmasi terlebih dahulu sebelum dapat terhubung.
-              </p>
-            )}
-          </form>
-        )}
+            </form>
+          )}
+        </div>
       </div>
     </div>
   );
