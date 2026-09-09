@@ -46,6 +46,25 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
   const [syncing, setSyncing] = React.useState(false);
   const [resending, setResending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // Rem kirim ulang: cegah spam yang memicu rate limit Supabase
+  const [cooldownUntil, setCooldownUntil] = React.useState(0);
+  const [nowTs, setNowTs] = React.useState(() => Date.now());
+
+  React.useEffect(() => {
+    if (cooldownUntil <= Date.now()) return;
+    const t = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [cooldownUntil]);
+
+  // Ganti email = mulai hitungan baru
+  React.useEffect(() => {
+    setCooldownUntil(0);
+  }, [email]);
+
+  const coolLeft = Math.max(0, Math.ceil((cooldownUntil - nowTs) / 1000));
+  const canResend = !resending && coolLeft <= 0;
+
+  const isRateLimit = (msg: string) => /rate.?limit|too many|over.{0,10}(limit|quota)|exceeded/i.test(msg || '');
 
   React.useEffect(() => {
     if (open) {
@@ -75,7 +94,19 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
       if (view === 'signup') {
         const res = await signUpWithEmailPassword(clean, password);
         if (res.error) {
-          setError(`Gagal daftar: ${res.error.message}. Coba lagi.`);
+          const m = res.error.message || '';
+          if (isRateLimit(m)) {
+            setCooldownUntil(Date.now() + 5 * 60_000);
+            setError(
+              'Batas kirim email tercapai — Anda terlalu sering meminta email. Tunggu beberapa menit, cek folder spam, lalu kirim ulang maksimal 1×.'
+            );
+          } else if (/already registered|already exists|already been/i.test(m)) {
+            setError(
+              'Email ini sudah terdaftar. Langsung Masuk saja — bila belum konfirmasi, gunakan tombol kirim ulang 1×.'
+            );
+          } else {
+            setError(`Gagal daftar: ${m}. Coba lagi.`);
+          }
           return;
         }
         if (res.needsConfirmation) {
@@ -88,11 +119,15 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
       } else {
         const res = await signInWithEmailPassword(clean, password);
         if (res.error) {
-          setError(
-            res.isNotConfirmed
-              ? 'Akun belum dikonfirmasi. Cek inbox email Anda, lalu klik tautan konfirmasi.'
-              : `Gagal masuk: ${res.error.message}. Periksa kembali email & sandi.`
-          );
+          const m = res.error.message || '';
+          if (res.isNotConfirmed) {
+            setError('Akun belum dikonfirmasi. Cek inbox email Anda, lalu klik tautan konfirmasi.');
+          } else if (isRateLimit(m)) {
+            setCooldownUntil(Date.now() + 5 * 60_000);
+            setError('Terlalu banyak percobaan masuk. Tunggu beberapa menit sebelum mencoba lagi.');
+          } else {
+            setError(`Gagal masuk: ${m}. Periksa kembali email & sandi.`);
+          }
           return;
         }
         if (res.user) {
@@ -127,13 +162,26 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
 
   const resend = async () => {
     const clean = email.trim().toLowerCase();
-    if (!clean) return;
+    if (!clean || resending || coolLeft > 0) return;
     setResending(true);
     setError(null);
     const { error: err } = await resendConfirmationEmail(clean);
     setResending(false);
-    if (err) setError(`Gagal mengirim ulang: ${err.message}.`);
-    else notify('success', `Email konfirmasi baru dikirim ke ${clean}.`);
+    if (err) {
+      const m = err.message || '';
+      if (isRateLimit(m)) {
+        setCooldownUntil(Date.now() + 5 * 60_000);
+        setError(
+          'Batas kirim email tercapai. Berhenti menekan kirim ulang — tunggu ±5 menit, cek folder spam, lalu coba 1× lagi.'
+        );
+      } else {
+        setError(`Gagal mengirim ulang: ${m}.`);
+      }
+    } else {
+      // Berhasil kirim → kunci 60 detik agar tidak di-spam
+      setCooldownUntil(Date.now() + 60_000);
+      notify('success', `Email konfirmasi baru dikirim ke ${clean}. Cek inbox & spam.`);
+    }
   };
 
   const signOut = async () => {
@@ -203,6 +251,7 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
               <p className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-[11.5px] leading-relaxed text-stone-500">
                 Setiap email baru membuat tautan lama hangus — selalu pakai <strong>email terbaru</strong>.
                 Buka tautan saat aplikasi berjalan agar sesi langsung tersambung.
+                Kirim ulang dibatasi 1× per menit agar tidak kena limit email.
               </p>
               <form onSubmit={verify} className="space-y-2">
                 <label htmlFor="otp" className="field-label">
@@ -229,9 +278,9 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
                 </p>
               ) : null}
               <div className="flex items-center justify-between border-t border-stone-100 pt-3 text-[12.5px]">
-                <button type="button" onClick={resend} disabled={resending} className="inline-flex items-center gap-1.5 font-medium text-stone-500 hover:text-stone-900">
+                <button type="button" onClick={resend} disabled={!canResend} title="Dibatasi 1× per menit agar tidak kena limit email" className="inline-flex items-center gap-1.5 font-medium text-stone-500 hover:text-stone-900 disabled:opacity-50">
                   <RefreshCw className={`h-3.5 w-3.5 ${resending ? 'animate-spin' : ''}`} aria-hidden="true" />
-                  {resending ? 'Mengirim…' : 'Kirim ulang'}
+                  {resending ? 'Mengirim…' : coolLeft > 0 ? `Tunggu ${coolLeft} dtk` : 'Kirim ulang'}
                 </button>
                 <button type="button" onClick={() => { setView('signin'); setError(null); }} className="font-semibold text-indigo-700 hover:text-indigo-800">
                   Sudah konfirmasi? Masuk
@@ -246,8 +295,8 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
                   <span>
                     {error}
                     {error.includes('belum dikonfirmasi') ? (
-                      <button type="button" onClick={resend} disabled={resending} className="mt-1.5 block rounded-lg bg-white px-2.5 py-1 text-[11.5px] font-semibold text-rose-700 shadow-sm">
-                        {resending ? 'Mengirim…' : 'Kirim ulang email konfirmasi'}
+                      <button type="button" onClick={resend} disabled={!canResend} title="Dibatasi 1× per menit agar tidak kena limit email" className="mt-1.5 block rounded-lg bg-white px-2.5 py-1 text-[11.5px] font-semibold text-rose-700 shadow-sm disabled:opacity-50">
+                        {resending ? 'Mengirim…' : coolLeft > 0 ? `Tunggu ${coolLeft} dtk` : 'Kirim ulang email konfirmasi'}
                       </button>
                     ) : null}
                   </span>
