@@ -162,7 +162,7 @@ export function Sidebar({
           >
             <Avatar email={userEmail} size="sm" />
             <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-stone-700">
-              {userEmail ? userEmail : 'Masuk / Daftar'}
+              {userEmail ? userEmail : 'Masuk'}
             </span>
           </button>
           <button

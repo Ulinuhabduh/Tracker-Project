@@ -36,12 +36,13 @@ import { ProjectModal } from '@/components/ProjectModal';
 import { AuthModal } from '@/components/AuthModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { ToastContainer, type ToastMessage } from '@/components/Toast';
-import { SkeletonCard } from '@/components/ui';
+import { EmptyState, SkeletonCard } from '@/components/ui';
 import { DashboardView } from '@/components/views/DashboardView';
 import { TodayView } from '@/components/views/TodayView';
 import { DeadlinesView } from '@/components/views/DeadlinesView';
 import { ActivityView } from '@/components/views/ActivityView';
 import type { ViewKey } from '@/components/navigation';
+import { LogIn } from 'lucide-react';
 
 export default function Home() {
   const [projects, setProjects] = React.useState<Project[]>([]);
@@ -97,43 +98,13 @@ export default function Home() {
   );
 
   React.useEffect(() => {
-    // Tangani hasil redirect link konfirmasi email Supabase (#error=...).
-    // Tanpa ini, link kedaluwarsa hanya jadi halaman kosong tanpa penjelasan.
-    try {
-      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      if (hash.has('error')) {
-        const code = hash.get('error_code') || '';
-        const raw = (hash.get('error_description') || '').replace(/\+/g, ' ');
-        let desc = '';
-        try {
-          desc = decodeURIComponent(raw);
-        } catch {
-          desc = raw;
-        }
-        const msg =
-          code === 'otp_expired' || /expired|invalid/i.test(desc)
-            ? 'Tautan konfirmasi kedaluwarsa atau sudah dipakai. Minta tautan baru lewat tombol kirim ulang, lalu pakai email terbaru.'
-            : desc
-              ? `Konfirmasi gagal: ${desc}. Coba kirim ulang email konfirmasi.`
-              : 'Konfirmasi email gagal. Coba kirim ulang email konfirmasi.';
-        notify('error', msg);
-        setAuthOpen(true);
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      }
-    } catch {
-      /* abaikan: URL tidak bisa dibaca */
-    }
-
     setUserEmailState(getUserEmail());
     refreshAll().finally(() => setLoading(false));
 
     if (!isSupabaseConfigured()) return;
     supabase.auth.getUser().then(({ data }) => {
       const email = data?.user?.email;
-      const confirmed =
-        data?.user?.email_confirmed_at ||
-        (data?.user as unknown as { confirmed_at?: string })?.confirmed_at;
-      if (email && confirmed) {
+      if (email) {
         const v = email.toLowerCase();
         setUserEmail(v);
         setUserEmailState(v);
@@ -141,10 +112,7 @@ export default function Home() {
     });
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       const email = session?.user?.email;
-      const confirmed =
-        session?.user?.email_confirmed_at ||
-        (session?.user as unknown as { confirmed_at?: string })?.confirmed_at;
-      if (email && confirmed) {
+      if (email) {
         const v = email.toLowerCase();
         setUserEmail(v);
         setUserEmailState(v);
@@ -189,6 +157,11 @@ export default function Home() {
     () => allTasks.filter((t) => visibleIds.has(t.project_id)),
     [allTasks, visibleIds]
   );
+  // Lapisan akhir: logbook hanya dari proyek milik akun ini
+  const visibleLogs = React.useMemo(
+    () => recentLogs.filter((l) => visibleIds.has(l.project_id)),
+    [recentLogs, visibleIds]
+  );
   const todayGroups = React.useMemo(
     () => groupTasksForToday(visibleTasks, projects),
     [visibleTasks, projects]
@@ -199,6 +172,25 @@ export default function Home() {
   const projectName = React.useCallback(
     (id: string) => projects.find((p) => p.id === id)?.title || 'Proyek',
     [projects]
+  );
+
+  // ---- auth gate: semua tambah/ubah/hapus data wajib masuk dulu ----
+  const requireAuth = React.useCallback(() => {
+    if (userEmail) return true;
+    notify('info', 'Masuk dulu sebelum menambah atau mengubah data.');
+    setAuthOpen(true);
+    return false;
+  }, [userEmail, notify]);
+
+  const handleWriteError = React.useCallback(
+    (err: unknown, fallbackMsg: string) => {
+      if (err instanceof Error && err.message === 'LOGIN_REQUIRED') {
+        requireAuth();
+      } else {
+        notify('error', fallbackMsg);
+      }
+    },
+    [requireAuth, notify]
   );
 
   // ---- navigation ----
@@ -212,24 +204,27 @@ export default function Home() {
     setPaletteOpen(false);
   }, []);
   const newProject = React.useCallback(() => {
+    if (!requireAuth()) return;
     setEditing(null);
     setProjectModal(true);
     setPaletteOpen(false);
-  }, []);
+  }, [requireAuth]);
 
   // ---- mutations ----
   const handleSaveProject = async (data: Partial<Project>) => {
+    if (!requireAuth()) return;
     try {
       const saved = await saveProject({ ...data, user_email: userEmail || data.user_email || '' });
       notify('success', `Proyek “${saved.title}” tersimpan.`);
       await refreshAll();
       if (selectedId === saved.id) await refreshDetail(saved.id);
-    } catch {
-      notify('error', 'Gagal menyimpan proyek. Coba lagi.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal menyimpan proyek. Coba lagi.');
     }
   };
 
   const handleDeleteProject = async (id: string) => {
+    if (!requireAuth()) return;
     const target = projects.find((p) => p.id === id);
     if (!window.confirm(`Hapus proyek “${target?.title || ''}” beserta tugas & logbook-nya?`)) return;
     try {
@@ -237,31 +232,33 @@ export default function Home() {
       notify('info', 'Proyek dihapus.');
       if (selectedId === id) setSelectedId(null);
       await refreshAll();
-    } catch {
-      notify('error', 'Gagal menghapus proyek.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal menghapus proyek.');
     }
   };
 
   const handleDuplicate = async (id: string) => {
+    if (!requireAuth()) return;
     try {
       const copy = await duplicateProject(id);
       if (copy) {
         notify('success', `Duplikat dibuat: “${copy.title}”.`);
         await refreshAll();
       }
-    } catch {
-      notify('error', 'Gagal menduplikat proyek.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal menduplikat proyek.');
     }
   };
 
   const handleStatus = async (id: string, status: ProjectStatus) => {
+    if (!requireAuth()) return;
     try {
       await saveProject({ id, status });
       notify('success', 'Status proyek diperbarui.');
       await refreshAll();
       if (selectedId === id) await refreshDetail(id);
-    } catch {
-      notify('error', 'Gagal memperbarui status.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal memperbarui status.');
     }
   };
 
@@ -270,15 +267,17 @@ export default function Home() {
   };
 
   const handleSaveTask = async (t: Partial<Task>) => {
+    if (!requireAuth()) return;
     try {
       await saveTask(t);
       await afterTaskChange();
-    } catch {
-      notify('error', 'Gagal menyimpan tugas.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal menyimpan tugas.');
     }
   };
 
   const handleToggleTask = async (task: Task) => {
+    if (!requireAuth()) return;
     try {
       await saveTask({
         id: task.id,
@@ -287,42 +286,45 @@ export default function Home() {
       });
       await refreshAll();
       if (selectedId) await refreshDetail(selectedId);
-    } catch {
-      notify('error', 'Gagal mengubah status tugas.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal mengubah status tugas.');
     }
   };
 
   const handleDeleteTask = async (id: string) => {
-    if (!selectedId) return;
+    if (!selectedId || !requireAuth()) return;
     try {
       await deleteTask(id, selectedId);
       await afterTaskChange();
       notify('info', 'Tugas dihapus.');
-    } catch {
-      notify('error', 'Gagal menghapus tugas.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal menghapus tugas.');
     }
   };
 
   const handleSaveMilestone = async (m: Partial<Milestone>) => {
+    if (!requireAuth()) return;
     try {
       await saveMilestone(m);
       if (selectedId) await refreshDetail(selectedId);
-    } catch {
-      notify('error', 'Gagal menyimpan milestone.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal menyimpan milestone.');
     }
   };
 
   const handleDeleteMilestone = async (id: string) => {
+    if (!requireAuth()) return;
     try {
       await deleteMilestone(id);
       if (selectedId) await refreshDetail(selectedId);
       notify('info', 'Milestone dihapus.');
-    } catch {
-      notify('error', 'Gagal menghapus milestone.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal menghapus milestone.');
     }
   };
 
   const handleSaveLogbook = async (l: Partial<LogbookEntry>) => {
+    if (!requireAuth()) return;
     try {
       await saveLogbook({ ...l, user_email: userEmail || l.user_email || '' });
       notify('success', 'Catatan tersimpan.');
@@ -331,19 +333,20 @@ export default function Home() {
         fetchRecentLogbooks(60),
       ]);
       setRecentLogs(logs);
-    } catch {
-      notify('error', 'Gagal menyimpan catatan.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal menyimpan catatan.');
     }
   };
 
   const handleDeleteLogbook = async (id: string) => {
+    if (!requireAuth()) return;
     try {
       await deleteLogbook(id);
       if (selectedId) await refreshDetail(selectedId);
       setRecentLogs(await fetchRecentLogbooks(60));
       notify('info', 'Catatan dihapus.');
-    } catch {
-      notify('error', 'Gagal menghapus catatan.');
+    } catch (err) {
+      handleWriteError(err, 'Gagal menghapus catatan.');
     }
   };
 
@@ -402,6 +405,23 @@ export default function Home() {
                 <SkeletonCard />
               </div>
             </div>
+          ) : !userEmail ? (
+            <div className="mx-auto max-w-lg pt-10">
+              <EmptyState
+                icon={<LogIn className="h-6 w-6" aria-hidden="true" />}
+                title="Masuk dulu untuk mulai"
+                desc="Masuk dengan akun Anda agar data proyek, tugas, dan logbook tersimpan khusus untuk akun tersebut dan sinkron di semua perangkat."
+                action={
+                  <button
+                    type="button"
+                    onClick={() => setAuthOpen(true)}
+                    className="btn-primary px-5 py-2.5 text-[13px]"
+                  >
+                    <LogIn className="h-4 w-4" aria-hidden="true" /> Masuk
+                  </button>
+                }
+              />
+            </div>
           ) : selectedId && detail ? (
             <ProjectDetail
               projectData={detail}
@@ -435,12 +455,12 @@ export default function Home() {
           ) : view === 'deadlines' ? (
             <DeadlinesView grouped={deadlineGroups} onOpenProject={openProject} />
           ) : view === 'activity' ? (
-            <ActivityView logs={recentLogs} projectName={projectName} onOpenProject={openProject} />
+            <ActivityView logs={visibleLogs} projectName={projectName} onOpenProject={openProject} />
           ) : (
             <DashboardView
               userEmail={userEmail}
               projects={projects}
-              recentLogs={recentLogs}
+              recentLogs={visibleLogs}
               onOpenProject={openProject}
               onEdit={(p) => {
                 setEditing(p);
@@ -466,7 +486,7 @@ export default function Home() {
       </div>
 
       <BottomNav view={view} onNavigate={goView} todayCount={todayCount} deadlineCount={deadlineCount} />
-      {!selectedId ? <MobileNewButton onClick={newProject} /> : null}
+      {!selectedId && userEmail ? <MobileNewButton onClick={newProject} /> : null}
 
       <CommandPalette
         open={paletteOpen}
@@ -503,6 +523,7 @@ export default function Home() {
           else setDetail(null);
         }}
         notify={notify}
+        onOpenAuth={() => setAuthOpen(true)}
       />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>

@@ -52,28 +52,35 @@ function generateId(): string {
   return 'id-' + Math.random().toString(36).substring(2, 11) + '-' + Date.now();
 }
 
+/** Wajib login sebelum tulis/ubah/hapus data. Dilempar ke UI untuk membuka AuthModal. */
+export function requireLoginEmail(): string {
+  const email = getUserEmail();
+  if (!email) throw new Error('LOGIN_REQUIRED');
+  return email;
+}
+
+/** Id proyek milik akun yang sedang masuk (dipakai untuk menyaring tugas/milestone/log). */
+async function getOwnProjectIds(): Promise<Set<string>> {
+  const projects = await fetchProjects();
+  return new Set(projects.map((p) => p.id));
+}
+
 // ==========================================
-// PROJECTS (WITH EMAIL FILTERING FOR MULTI-DEVICE)
+// PROJECTS (STRICT PER-ACCOUNT: hanya milik akun yang masuk)
 // ==========================================
 export async function fetchProjects(): Promise<Project[]> {
   const currentEmail = getUserEmail();
 
+  // Belum masuk: tidak tampilkan data apa pun (bukan demo / milik orang lain)
+  if (!currentEmail) return [];
+
   if (isSupabaseConfigured()) {
     try {
-      let query = supabase
+      const { data, error } = await supabase
         .from('projects')
         .select('*')
+        .eq('user_email', currentEmail)
         .order('created_at', { ascending: false });
-
-      // If user has set an email, filter by this email or unclaimed projects
-      if (currentEmail) {
-        query = query.or(`user_email.eq.${currentEmail},user_email.eq.,user_email.is.null`);
-      } else {
-        // Logged out: only unclaimed (public demo) projects, never other users' data
-        query = query.or('user_email.eq.,user_email.is.null');
-      }
-
-      const { data, error } = await query;
 
       if (!error && data) {
         return data as Project[];
@@ -88,14 +95,14 @@ export async function fetchProjects(): Promise<Project[]> {
 
   // Fallback when .env.local not configured or offline
   const localList = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
-  if (currentEmail) {
-    return localList.filter((p) => !p.user_email || p.user_email === currentEmail);
-  }
-  // Logged out: only unclaimed demo projects
-  return localList.filter((p) => !p.user_email);
+  return localList.filter((p) => p.user_email === currentEmail);
 }
 
 export async function fetchProjectDetail(id: string): Promise<ProjectDetailData | null> {
+  // Belum masuk: tidak boleh membuka detail proyek apa pun
+  const currentEmail = getUserEmail();
+  if (!currentEmail) return null;
+
   if (isSupabaseConfigured()) {
     try {
       const [projRes, msRes, taskRes, logRes] = await Promise.all([
@@ -107,9 +114,8 @@ export async function fetchProjectDetail(id: string): Promise<ProjectDetailData 
 
       if (!projRes.error && projRes.data) {
         const proj = projRes.data as Project;
-        // Ownership guard: never expose another account's project
-        const currentEmail = getUserEmail();
-        if (proj.user_email && proj.user_email !== currentEmail) return null;
+        // Ownership guard: hanya proyek milik akun ini yang boleh dibuka
+        if (proj.user_email !== currentEmail) return null;
         return {
           ...proj,
           milestones: (msRes.data as Milestone[]) || [],
@@ -126,9 +132,8 @@ export async function fetchProjectDetail(id: string): Promise<ProjectDetailData 
   const projects = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
   const project = projects.find((p) => p.id === id);
   if (!project) return null;
-  // Ownership guard: never expose another account's project
-  const currentEmail = getUserEmail();
-  if (project.user_email && project.user_email !== currentEmail) return null;
+  // Ownership guard: hanya proyek milik akun ini yang boleh dibuka
+  if (project.user_email !== currentEmail) return null;
 
   const allMilestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
   const allTasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
@@ -143,10 +148,12 @@ export async function fetchProjectDetail(id: string): Promise<ProjectDetailData 
 }
 
 export async function saveProject(projectData: Partial<Project>): Promise<Project> {
+  // Wajib masuk dulu sebelum tambah/ubah proyek
+  const loginEmail = requireLoginEmail();
   const isNew = !projectData.id;
   const now = new Date().toISOString();
   const id = projectData.id || generateId();
-  const userEmail = projectData.user_email || getUserEmail() || '';
+  const userEmail = projectData.user_email || loginEmail;
 
   const projectRecord: Project = {
     id,
@@ -198,6 +205,7 @@ export async function saveProject(projectData: Partial<Project>): Promise<Projec
 }
 
 export async function deleteProject(id: string): Promise<boolean> {
+  requireLoginEmail();
   if (isSupabaseConfigured()) {
     try {
       await supabase.from('projects').delete().eq('id', id);
@@ -225,6 +233,7 @@ export async function deleteProject(id: string): Promise<boolean> {
 // TASKS & AUTOMATIC PROGRESS RECALCULATION
 // ==========================================
 export async function saveTask(taskData: Partial<Task>): Promise<Task> {
+  requireLoginEmail();
   const isNew = !taskData.id;
   const now = new Date().toISOString();
   const id = taskData.id || generateId();
@@ -266,6 +275,7 @@ export async function saveTask(taskData: Partial<Task>): Promise<Task> {
 }
 
 export async function deleteTask(id: string, projectId: string): Promise<boolean> {
+  requireLoginEmail();
   if (isSupabaseConfigured()) {
     try {
       await supabase.from('tasks').delete().eq('id', id);
@@ -344,6 +354,7 @@ export async function recalculateProjectProgress(projectId: string): Promise<num
 // MILESTONES
 // ==========================================
 export async function saveMilestone(milestoneData: Partial<Milestone>): Promise<Milestone> {
+  requireLoginEmail();
   const isNew = !milestoneData.id;
   const now = new Date().toISOString();
   const id = milestoneData.id || generateId();
@@ -381,6 +392,7 @@ export async function saveMilestone(milestoneData: Partial<Milestone>): Promise<
 }
 
 export async function deleteMilestone(id: string): Promise<boolean> {
+  requireLoginEmail();
   if (isSupabaseConfigured()) {
     try {
       await supabase.from('milestones').delete().eq('id', id);
@@ -398,10 +410,12 @@ export async function deleteMilestone(id: string): Promise<boolean> {
 // LOGBOOKS (WITH LIVE PREVIEW & USER EMAIL)
 // ==========================================
 export async function saveLogbook(logData: Partial<LogbookEntry>): Promise<LogbookEntry> {
+  // Wajib masuk dulu sebelum tambah/ubah catatan
+  const loginEmail = requireLoginEmail();
   const isNew = !logData.id;
   const now = new Date().toISOString();
   const id = logData.id || generateId();
-  const userEmail = logData.user_email || getUserEmail() || '';
+  const userEmail = logData.user_email || loginEmail;
 
   const entry: LogbookEntry = {
     id,
@@ -450,6 +464,7 @@ export async function saveLogbook(logData: Partial<LogbookEntry>): Promise<Logbo
 }
 
 export async function deleteLogbook(id: string): Promise<boolean> {
+  requireLoginEmail();
   if (isSupabaseConfigured()) {
     try {
       await supabase.from('logbooks').delete().eq('id', id);
@@ -498,7 +513,8 @@ export async function syncLocalDataToSupabase(email: string): Promise<{ success:
 }
 
 export async function deleteAllData(scope: 'all' | 'user_only' = 'all'): Promise<{ success: boolean; message: string }> {
-  const currentEmail = getUserEmail();
+  // Tindakan destruktif: wajib masuk dulu (mencegah wipe saat logout)
+  const currentEmail = requireLoginEmail();
 
   if (isSupabaseConfigured()) {
     try {
@@ -565,78 +581,98 @@ export async function deleteAllData(scope: 'all' | 'user_only' = 'all'): Promise
 
 export function resetToInitialSeed(): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(INITIAL_PROJECTS));
+  // Cap data contoh sebagai milik akun yang sedang masuk agar tampil di workspace-nya
+  const email = getUserEmail() || '';
+  const projects = INITIAL_PROJECTS.map((p) => ({ ...p, user_email: email || p.user_email }));
+  const logbooks = INITIAL_LOGBOOKS.map((l) => ({ ...l, user_email: email || l.user_email }));
+  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
   localStorage.setItem(STORAGE_KEYS.MILESTONES, JSON.stringify(INITIAL_MILESTONES));
   localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
-  localStorage.setItem(STORAGE_KEYS.LOGBOOKS, JSON.stringify(INITIAL_LOGBOOKS));
+  localStorage.setItem(STORAGE_KEYS.LOGBOOKS, JSON.stringify(logbooks));
 }
 
 // ==========================================
 // CROSS-PROJECT QUERIES (dashboard views)
 // ==========================================
 
-/** All tasks across projects, newest first. Single query — no N+1. */
+/** All tasks across OWN projects, newest first. Single query — no N+1. */
 export async function fetchAllTasks(): Promise<Task[]> {
+  const currentEmail = getUserEmail();
+  if (!currentEmail) return [];
+
   if (isSupabaseConfigured()) {
     try {
+      const ownIds = await getOwnProjectIds();
+      if (ownIds.size === 0) return [];
       const { data, error } = await supabase
         .from('tasks')
         .select('*')
+        .in('project_id', [...ownIds])
         .order('created_at', { ascending: false });
       if (!error && data) return data as Task[];
     } catch (err) {
       console.warn('fetchAllTasks Supabase notice:', err);
     }
   }
-  return getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
+  const ownIds = await getOwnProjectIds();
+  if (ownIds.size === 0) return [];
+  return getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS).filter((t) => ownIds.has(t.project_id));
 }
 
-/** Most recent logbook entries across every visible project. */
+/** Most recent logbook entries across OWN projects. */
 export async function fetchRecentLogbooks(limit = 12): Promise<LogbookEntry[]> {
   const currentEmail = getUserEmail();
-  const visible = (l: LogbookEntry) =>
-    currentEmail ? !l.user_email || l.user_email === currentEmail : !l.user_email;
+  if (!currentEmail) return [];
 
   if (isSupabaseConfigured()) {
     try {
-      let query = supabase
+      const { data, error } = await supabase
         .from('logbooks')
         .select('*')
+        .eq('user_email', currentEmail)
         .order('created_at', { ascending: false })
-        .limit(limit * 2);
-      if (currentEmail) {
-        query = query.or(`user_email.eq.${currentEmail},user_email.eq.,user_email.is.null`);
-      } else {
-        query = query.or('user_email.eq.,user_email.is.null');
-      }
-      const { data, error } = await query;
-      if (!error && data) return (data as LogbookEntry[]).filter(visible).slice(0, limit);
+        .limit(limit);
+      if (!error && data) return data as LogbookEntry[];
     } catch (err) {
       console.warn('fetchRecentLogbooks Supabase notice:', err);
     }
   }
+  const ownIds = await getOwnProjectIds();
   const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
   return [...logs]
-    .filter(visible)
+    .filter((l) => l.user_email === currentEmail && ownIds.has(l.project_id))
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, limit);
 }
 
-/** All milestones across projects. */
+/** All milestones across OWN projects. */
 export async function fetchAllMilestones(): Promise<Milestone[]> {
+  const currentEmail = getUserEmail();
+  if (!currentEmail) return [];
+
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase.from('milestones').select('*');
+      const ownIds = await getOwnProjectIds();
+      if (ownIds.size === 0) return [];
+      const { data, error } = await supabase
+        .from('milestones')
+        .select('*')
+        .in('project_id', [...ownIds]);
       if (!error && data) return data as Milestone[];
     } catch (err) {
       console.warn('fetchAllMilestones Supabase notice:', err);
     }
   }
-  return getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
+  const ownIds = await getOwnProjectIds();
+  if (ownIds.size === 0) return [];
+  return getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES).filter((m) =>
+    ownIds.has(m.project_id)
+  );
 }
 
-/** Duplicate a project with its tasks & milestones under new ids. */
+/** Duplicate OWN project with its tasks & milestones under new ids. */
 export async function duplicateProject(id: string): Promise<Project | null> {
+  requireLoginEmail();
   const detail = await fetchProjectDetail(id);
   if (!detail) return null;
   const now = new Date().toISOString();
@@ -711,21 +747,26 @@ export async function exportAllData(): Promise<BackupPayload> {
 export async function importAllData(
   payload: BackupPayload
 ): Promise<{ success: boolean; message: string }> {
+  // Pulihkan backup = tulis data: wajib masuk dulu
+  const loginEmail = requireLoginEmail();
   try {
     if (!payload || payload.app !== 'trackpro' || !Array.isArray(payload.projects)) {
       return { success: false, message: 'File bukan backup Tracker Nexus yang valid.' };
     }
-    setLocal(STORAGE_KEYS.PROJECTS, payload.projects);
+    // Cap semua data impor sebagai milik akun ini agar tidak bocor antar-akun
+    const projects = payload.projects.map((p) => ({ ...p, user_email: loginEmail }));
+    const logbooks = (payload.logbooks || []).map((l) => ({ ...l, user_email: loginEmail }));
+    setLocal(STORAGE_KEYS.PROJECTS, projects);
     setLocal(STORAGE_KEYS.MILESTONES, payload.milestones || []);
     setLocal(STORAGE_KEYS.TASKS, payload.tasks || []);
-    setLocal(STORAGE_KEYS.LOGBOOKS, payload.logbooks || []);
+    setLocal(STORAGE_KEYS.LOGBOOKS, logbooks);
 
     if (isSupabaseConfigured()) {
       try {
-        if (payload.projects.length > 0) await supabase.from('projects').upsert(payload.projects);
+        if (projects.length > 0) await supabase.from('projects').upsert(projects);
         if ((payload.milestones || []).length > 0) await supabase.from('milestones').upsert(payload.milestones);
         if ((payload.tasks || []).length > 0) await supabase.from('tasks').upsert(payload.tasks);
-        if ((payload.logbooks || []).length > 0) await supabase.from('logbooks').upsert(payload.logbooks);
+        if (logbooks.length > 0) await supabase.from('logbooks').upsert(logbooks);
       } catch (err) {
         console.warn('importAllData cloud sync notice:', err);
       }

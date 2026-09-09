@@ -22,6 +22,21 @@ export function LogbookPrintPreview({ project, entries, filterLabel, onClose }: 
   }).format(new Date());
   const statusLabel = getStatusBadge(project.status).label;
 
+  // Nama file PDF saat "Save as PDF" diambil browser dari document.title,
+  // jadi set judul dokumen = nama proyek selama pratinjau dibuka.
+  React.useEffect(() => {
+    const prev = document.title;
+    const safe = project.title
+      .replace(/[\\/:*?"<>|]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 100);
+    document.title = `Logbook - ${safe || 'Tanpa Nama'}`;
+    return () => {
+      document.title = prev;
+    };
+  }, [project.title]);
+
   const meta: [string, string][] = [
     ['Proyek', project.title],
     ['Kategori', project.category || '—'],
@@ -139,9 +154,6 @@ export function LogbookPrintPreview({ project, entries, filterLabel, onClose }: 
 
           {/* Footer */}
           <div className="flex items-center justify-between border-t border-stone-300 px-6 py-2.5 text-[10px] text-stone-500">
-            <span>
-              Dicetak dari <span translate="no">Tracker Nexus</span> • {stamp}
-            </span>
             <span>
               {entries.length} entri • {project.title}
             </span>

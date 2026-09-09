@@ -17,7 +17,6 @@ import {
 import {
   signInWithEmailPassword,
   signOutAuth,
-  signUpWithEmailPassword,
 } from '@/lib/supabase';
 import { syncLocalDataToSupabase } from '@/lib/project-service';
 
@@ -30,10 +29,7 @@ interface AuthModalProps {
   notify: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
-type View = 'signin' | 'signup';
-
 export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSignedOut, notify }: AuthModalProps) {
-  const [view, setView] = React.useState<View>('signin');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [showPw, setShowPw] = React.useState(false);
@@ -47,7 +43,6 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
     if (open) {
       setError(null);
       if (currentUserEmail) setEmail(currentUserEmail);
-      else setView('signin');
     }
   }, [open, currentUserEmail]);
 
@@ -67,46 +62,21 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
     }
     setBusy(true);
     try {
-      if (view === 'signup') {
-        const res = await signUpWithEmailPassword(clean, password);
-        if (res.error) {
-          const m = res.error.message || '';
-          if (isRateLimit(m)) {
-            setError('Terlalu banyak percobaan. Tunggu beberapa menit sebelum mencoba lagi.');
-          } else if (/already registered|already exists|already been/i.test(m)) {
-            setError('Email ini sudah terdaftar. Langsung Masuk saja.');
-          } else {
-            setError(`Gagal daftar: ${m}. Coba lagi.`);
-          }
-          return;
-        }
-        if (res.user && res.session) {
-          // Konfirmasi email mati: sesi langsung tersedia
-          onAuthSuccess(res.user.email || clean);
-          onClose();
+      const res = await signInWithEmailPassword(clean, password);
+      if (res.error) {
+        const m = res.error.message || '';
+        if (res.isNotConfirmed) {
+          setError('Email ini belum dikonfirmasi. Hubungi admin untuk mengonfirmasi akun Anda.');
+        } else if (isRateLimit(m)) {
+          setError('Terlalu banyak percobaan masuk. Tunggu beberapa menit sebelum mencoba lagi.');
         } else {
-          // Cadangan bila konfirmasi dinyalakan lagi di dashboard
-          setView('signin');
-          setError(null);
-          notify('info', 'Akun dibuat. Silakan masuk untuk mulai memakai.');
+          setError(`Gagal masuk: ${m}. Periksa kembali email & sandi.`);
         }
-      } else {
-        const res = await signInWithEmailPassword(clean, password);
-        if (res.error) {
-          const m = res.error.message || '';
-          if (res.isNotConfirmed) {
-            setError('Akun belum dikonfirmasi. Minta admin mengonfirmasi email Anda lewat dashboard Supabase.');
-          } else if (isRateLimit(m)) {
-            setError('Terlalu banyak percobaan masuk. Tunggu beberapa menit sebelum mencoba lagi.');
-          } else {
-            setError(`Gagal masuk: ${m}. Periksa kembali email & sandi.`);
-          }
-          return;
-        }
-        if (res.user) {
-          onAuthSuccess(res.user.email || clean);
-          onClose();
-        }
+        return;
+      }
+      if (res.user) {
+        onAuthSuccess(res.user.email || clean);
+        onClose();
       }
     } finally {
       setBusy(false);
@@ -140,7 +110,7 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="text-[15px] font-bold tracking-tight text-stone-900">
-              {currentUserEmail ? 'Akun Anda' : view === 'signin' ? 'Masuk' : 'Buat akun'}
+              {currentUserEmail ? 'Akun Anda' : 'Masuk'}
             </h2>
             <p className="truncate text-[12px] text-stone-500">
               {currentUserEmail ? currentUserEmail : 'Sinkron aman antar-device via cloud'}
@@ -202,10 +172,10 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
                   <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" aria-hidden="true" />
                   <input
                     id="auth-pass"
-                    name={view === 'signin' ? 'current-password' : 'new-password'}
+                    name="current-password"
                     type={showPw ? 'text' : 'password'}
                     required
-                    autoComplete={view === 'signin' ? 'current-password' : 'new-password'}
+                    autoComplete="current-password"
                     placeholder="Minimal 6 karakter…"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -222,28 +192,16 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
                   </button>
                 </div>
               </div>
-              <div className="flex items-center justify-between text-[12.5px]">
-                <span className="text-stone-500">{view === 'signin' ? 'Belum punya akun?' : 'Sudah punya akun?'}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setView(view === 'signin' ? 'signup' : 'signin');
-                    setError(null);
-                  }}
-                  className="font-semibold text-indigo-700 hover:text-indigo-800"
-                >
-                  {view === 'signin' ? 'Daftar' : 'Masuk'}
-                </button>
-              </div>
+              <p className="text-center text-[12px] leading-relaxed text-stone-500">
+                Belum punya akun? Hubungi admin untuk dibuatkan.
+              </p>
               <button type="submit" disabled={busy} className="btn-primary w-full py-2.5 text-[13px]">
                 {busy ? (
                   <>
                     <Loader className="h-4 w-4 animate-spin" aria-hidden="true" /> Memproses…
                   </>
-                ) : view === 'signin' ? (
-                  'Masuk'
                 ) : (
-                  'Buat akun'
+                  'Masuk'
                 )}
               </button>
             </form>

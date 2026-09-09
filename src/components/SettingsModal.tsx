@@ -28,6 +28,7 @@ interface SettingsModalProps {
   onClose: () => void;
   onDataChanged: () => void;
   notify: (type: 'success' | 'error' | 'info', msg: string) => void;
+  onOpenAuth: () => void;
 }
 
 function Row({
@@ -50,7 +51,7 @@ function Row({
   );
 }
 
-export function SettingsModal({ open, onClose, onDataChanged, notify }: SettingsModalProps) {
+export function SettingsModal({ open, onClose, onDataChanged, notify, onOpenAuth }: SettingsModalProps) {
   const cloud = isSupabaseConfigured();
   const [testing, setTesting] = React.useState(false);
   const [testMsg, setTestMsg] = React.useState<string | null>(null);
@@ -105,6 +106,12 @@ export function SettingsModal({ open, onClose, onDataChanged, notify }: Settings
 
   const doImport = async (file: File | undefined) => {
     if (!file) return;
+    if (!userEmail) {
+      notify('info', 'Masuk dulu sebelum memulihkan backup.');
+      onClose();
+      onOpenAuth();
+      return;
+    }
     setImporting(true);
     try {
       const text = await file.text();
@@ -116,8 +123,14 @@ export function SettingsModal({ open, onClose, onDataChanged, notify }: Settings
       } else {
         notify('error', res.message);
       }
-    } catch {
-      notify('error', 'File tidak terbaca. Pastikan file backup JSON Tracker Nexus.');
+    } catch (err) {
+      if (err instanceof Error && err.message === 'LOGIN_REQUIRED') {
+        notify('info', 'Masuk dulu sebelum memulihkan backup.');
+        onClose();
+        onOpenAuth();
+      } else {
+        notify('error', 'File tidak terbaca. Pastikan file backup JSON Tracker Nexus.');
+      }
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -135,12 +148,26 @@ export function SettingsModal({ open, onClose, onDataChanged, notify }: Settings
 
   const wipe = async () => {
     if (confirm.trim().toUpperCase() !== 'HAPUS') return;
+    if (!userEmail) {
+      notify('info', 'Masuk dulu sebelum menghapus data.');
+      onClose();
+      onOpenAuth();
+      return;
+    }
     setWiping(true);
     try {
       const res = await deleteAllData(scope);
       onDataChanged();
       notify('info', res.message);
       onClose();
+    } catch (err) {
+      if (err instanceof Error && err.message === 'LOGIN_REQUIRED') {
+        notify('info', 'Masuk dulu sebelum menghapus data.');
+        onClose();
+        onOpenAuth();
+      } else {
+        notify('error', 'Gagal menghapus data. Coba lagi.');
+      }
     } finally {
       setWiping(false);
     }
@@ -190,7 +217,29 @@ export function SettingsModal({ open, onClose, onDataChanged, notify }: Settings
             </button>
           </section>
 
+          {!userEmail ? (
+            <section aria-label="Masuk diperlukan">
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-3 text-[12.5px] leading-relaxed text-indigo-900">
+                <p className="font-semibold">Masuk dulu untuk mengelola data</p>
+                <p className="mt-0.5 text-indigo-700">
+                  Backup, pulihkan, dan hapus data hanya tersedia setelah masuk agar data milik akun Anda tetap aman.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenAuth();
+                  }}
+                  className="btn-primary mt-2.5 w-full px-4 py-2 text-[12.5px]"
+                >
+                  Masuk
+                </button>
+              </div>
+            </section>
+          ) : null}
           {/* Backup */}
+          {userEmail ? (
+          <>
           <section aria-label="Backup data">
             <h3 className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-stone-400">
               Backup
@@ -295,6 +344,8 @@ export function SettingsModal({ open, onClose, onDataChanged, notify }: Settings
               </button>
             </div>
           </section>
+          </>
+          ) : null}
         </div>
       </div>
     </div>
