@@ -68,6 +68,9 @@ export async function fetchProjects(): Promise<Project[]> {
       // If user has set an email, filter by this email or unclaimed projects
       if (currentEmail) {
         query = query.or(`user_email.eq.${currentEmail},user_email.eq.,user_email.is.null`);
+      } else {
+        // Logged out: only unclaimed (public demo) projects, never other users' data
+        query = query.or('user_email.eq.,user_email.is.null');
       }
 
       const { data, error } = await query;
@@ -88,7 +91,8 @@ export async function fetchProjects(): Promise<Project[]> {
   if (currentEmail) {
     return localList.filter((p) => !p.user_email || p.user_email === currentEmail);
   }
-  return localList;
+  // Logged out: only unclaimed demo projects
+  return localList.filter((p) => !p.user_email);
 }
 
 export async function fetchProjectDetail(id: string): Promise<ProjectDetailData | null> {
@@ -102,8 +106,12 @@ export async function fetchProjectDetail(id: string): Promise<ProjectDetailData 
       ]);
 
       if (!projRes.error && projRes.data) {
+        const proj = projRes.data as Project;
+        // Ownership guard: never expose another account's project
+        const currentEmail = getUserEmail();
+        if (proj.user_email && proj.user_email !== currentEmail) return null;
         return {
-          ...(projRes.data as Project),
+          ...proj,
           milestones: (msRes.data as Milestone[]) || [],
           tasks: (taskRes.data as Task[]) || [],
           logbooks: (logRes.data as LogbookEntry[]) || [],
@@ -118,6 +126,9 @@ export async function fetchProjectDetail(id: string): Promise<ProjectDetailData 
   const projects = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
   const project = projects.find((p) => p.id === id);
   if (!project) return null;
+  // Ownership guard: never expose another account's project
+  const currentEmail = getUserEmail();
+  if (project.user_email && project.user_email !== currentEmail) return null;
 
   const allMilestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
   const allTasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
@@ -580,22 +591,33 @@ export async function fetchAllTasks(): Promise<Task[]> {
   return getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
 }
 
-/** Most recent logbook entries across every project. */
+/** Most recent logbook entries across every visible project. */
 export async function fetchRecentLogbooks(limit = 12): Promise<LogbookEntry[]> {
+  const currentEmail = getUserEmail();
+  const visible = (l: LogbookEntry) =>
+    currentEmail ? !l.user_email || l.user_email === currentEmail : !l.user_email;
+
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('logbooks')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(limit);
-      if (!error && data) return data as LogbookEntry[];
+        .limit(limit * 2);
+      if (currentEmail) {
+        query = query.or(`user_email.eq.${currentEmail},user_email.eq.,user_email.is.null`);
+      } else {
+        query = query.or('user_email.eq.,user_email.is.null');
+      }
+      const { data, error } = await query;
+      if (!error && data) return (data as LogbookEntry[]).filter(visible).slice(0, limit);
     } catch (err) {
       console.warn('fetchRecentLogbooks Supabase notice:', err);
     }
   }
   const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
   return [...logs]
+    .filter(visible)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, limit);
 }
@@ -664,7 +686,7 @@ export interface BackupPayload {
   logbooks: LogbookEntry[];
 }
 
-/** Gather the full workspace into one portable JSON object. */
+/** Gather the full visible workspace into one portable JSON object. */
 export async function exportAllData(): Promise<BackupPayload> {
   const [projects, tasks, milestones, logbooks] = await Promise.all([
     fetchProjects(),
@@ -672,14 +694,16 @@ export async function exportAllData(): Promise<BackupPayload> {
     fetchAllMilestones(),
     fetchRecentLogbooks(500),
   ]);
+  // Only include items belonging to visible projects (never leak other accounts)
+  const ids = new Set(projects.map((p) => p.id));
   return {
     app: 'trackpro',
     version: 1,
     exported_at: new Date().toISOString(),
     projects,
-    milestones,
-    tasks,
-    logbooks,
+    milestones: milestones.filter((m) => ids.has(m.project_id)),
+    tasks: tasks.filter((t) => ids.has(t.project_id)),
+    logbooks: logbooks.filter((l) => ids.has(l.project_id)),
   };
 }
 

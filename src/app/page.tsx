@@ -126,6 +126,8 @@ export default function Home() {
       } else if (event === 'SIGNED_OUT') {
         clearUserEmail();
         setUserEmailState('');
+        setSelectedId(null);
+        setDetail(null);
         refreshAll();
       }
     });
@@ -155,7 +157,15 @@ export default function Home() {
   }, [paletteOpen]);
 
   // ---- derived ----
-  const todayGroups = React.useMemo(() => groupTasksForToday(allTasks, projects), [allTasks, projects]);
+  const visibleIds = React.useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
+  const visibleTasks = React.useMemo(
+    () => allTasks.filter((t) => visibleIds.has(t.project_id)),
+    [allTasks, visibleIds]
+  );
+  const todayGroups = React.useMemo(
+    () => groupTasksForToday(visibleTasks, projects),
+    [visibleTasks, projects]
+  );
   const deadlineGroups = React.useMemo(() => groupProjectsByDeadline(projects), [projects]);
   const todayCount = todayGroups.overdue.length + todayGroups.today.length;
   const deadlineCount = deadlineGroups.overdue.length + deadlineGroups.week.length;
@@ -313,12 +323,15 @@ export default function Home() {
   const handleAuthSuccess = (email: string) => {
     setUserEmail(email);
     setUserEmailState(email);
+    setSelectedId(null);
     refreshAll();
     notify('success', `Masuk sebagai ${email}.`);
   };
   const handleSignedOut = () => {
     clearUserEmail();
     setUserEmailState('');
+    setSelectedId(null);
+    setDetail(null);
     refreshAll();
     notify('info', 'Anda keluar dari akun.');
   };
