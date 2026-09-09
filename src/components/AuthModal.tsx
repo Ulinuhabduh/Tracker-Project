@@ -10,18 +10,14 @@ import {
   Loader,
   LogOut,
   Mail,
-  MailCheck,
-  RefreshCw,
   ShieldCheck,
   UploadCloud,
   X,
 } from 'lucide-react';
 import {
-  resendConfirmationEmail,
   signInWithEmailPassword,
   signOutAuth,
   signUpWithEmailPassword,
-  verifyEmailOtp,
 } from '@/lib/supabase';
 import { syncLocalDataToSupabase } from '@/lib/project-service';
 
@@ -34,42 +30,22 @@ interface AuthModalProps {
   notify: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
-type View = 'signin' | 'signup' | 'confirm';
+type View = 'signin' | 'signup';
 
 export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSignedOut, notify }: AuthModalProps) {
   const [view, setView] = React.useState<View>('signin');
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
-  const [otp, setOtp] = React.useState('');
   const [showPw, setShowPw] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
-  const [resending, setResending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  // Rem kirim ulang: cegah spam yang memicu rate limit Supabase
-  const [cooldownUntil, setCooldownUntil] = React.useState(0);
-  const [nowTs, setNowTs] = React.useState(() => Date.now());
-
-  React.useEffect(() => {
-    if (cooldownUntil <= Date.now()) return;
-    const t = setInterval(() => setNowTs(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [cooldownUntil]);
-
-  // Ganti email = mulai hitungan baru
-  React.useEffect(() => {
-    setCooldownUntil(0);
-  }, [email]);
-
-  const coolLeft = Math.max(0, Math.ceil((cooldownUntil - nowTs) / 1000));
-  const canResend = !resending && coolLeft <= 0;
 
   const isRateLimit = (msg: string) => /rate.?limit|too many|over.{0,10}(limit|quota)|exceeded/i.test(msg || '');
 
   React.useEffect(() => {
     if (open) {
       setError(null);
-      setOtp('');
       if (currentUserEmail) setEmail(currentUserEmail);
       else setView('signin');
     }
@@ -96,34 +72,31 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
         if (res.error) {
           const m = res.error.message || '';
           if (isRateLimit(m)) {
-            setCooldownUntil(Date.now() + 5 * 60_000);
-            setError(
-              'Batas kirim email tercapai — Anda terlalu sering meminta email. Tunggu beberapa menit, cek folder spam, lalu kirim ulang maksimal 1×.'
-            );
+            setError('Terlalu banyak percobaan. Tunggu beberapa menit sebelum mencoba lagi.');
           } else if (/already registered|already exists|already been/i.test(m)) {
-            setError(
-              'Email ini sudah terdaftar. Langsung Masuk saja — bila belum konfirmasi, gunakan tombol kirim ulang 1×.'
-            );
+            setError('Email ini sudah terdaftar. Langsung Masuk saja.');
           } else {
             setError(`Gagal daftar: ${m}. Coba lagi.`);
           }
           return;
         }
-        if (res.needsConfirmation) {
-          setView('confirm');
-          notify('info', `Tautan konfirmasi dikirim ke ${clean}.`);
-        } else if (res.user) {
+        if (res.user && res.session) {
+          // Konfirmasi email mati: sesi langsung tersedia
           onAuthSuccess(res.user.email || clean);
           onClose();
+        } else {
+          // Cadangan bila konfirmasi dinyalakan lagi di dashboard
+          setView('signin');
+          setError(null);
+          notify('info', 'Akun dibuat. Silakan masuk untuk mulai memakai.');
         }
       } else {
         const res = await signInWithEmailPassword(clean, password);
         if (res.error) {
           const m = res.error.message || '';
           if (res.isNotConfirmed) {
-            setError('Akun belum dikonfirmasi. Cek inbox email Anda, lalu klik tautan konfirmasi.');
+            setError('Akun belum dikonfirmasi. Minta admin mengonfirmasi email Anda lewat dashboard Supabase.');
           } else if (isRateLimit(m)) {
-            setCooldownUntil(Date.now() + 5 * 60_000);
             setError('Terlalu banyak percobaan masuk. Tunggu beberapa menit sebelum mencoba lagi.');
           } else {
             setError(`Gagal masuk: ${m}. Periksa kembali email & sandi.`);
@@ -137,50 +110,6 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
       }
     } finally {
       setBusy(false);
-    }
-  };
-
-  const verify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!otp.trim()) return;
-    setError(null);
-    setBusy(true);
-    try {
-      const res = await verifyEmailOtp(email.trim().toLowerCase(), otp.trim());
-      if (res.error) {
-        setError(`Kode tidak valid: ${res.error.message}. Minta kirim ulang bila perlu.`);
-        return;
-      }
-      if (res.user) {
-        onAuthSuccess(res.user.email || email.trim().toLowerCase());
-        onClose();
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const resend = async () => {
-    const clean = email.trim().toLowerCase();
-    if (!clean || resending || coolLeft > 0) return;
-    setResending(true);
-    setError(null);
-    const { error: err } = await resendConfirmationEmail(clean);
-    setResending(false);
-    if (err) {
-      const m = err.message || '';
-      if (isRateLimit(m)) {
-        setCooldownUntil(Date.now() + 5 * 60_000);
-        setError(
-          'Batas kirim email tercapai. Berhenti menekan kirim ulang — tunggu ±5 menit, cek folder spam, lalu coba 1× lagi.'
-        );
-      } else {
-        setError(`Gagal mengirim ulang: ${m}.`);
-      }
-    } else {
-      // Berhasil kirim → kunci 60 detik agar tidak di-spam
-      setCooldownUntil(Date.now() + 60_000);
-      notify('success', `Email konfirmasi baru dikirim ke ${clean}. Cek inbox & spam.`);
     }
   };
 
@@ -211,7 +140,7 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="text-[15px] font-bold tracking-tight text-stone-900">
-              {currentUserEmail ? 'Akun Anda' : view === 'confirm' ? 'Konfirmasi email' : view === 'signin' ? 'Masuk' : 'Buat akun'}
+              {currentUserEmail ? 'Akun Anda' : view === 'signin' ? 'Masuk' : 'Buat akun'}
             </h2>
             <p className="truncate text-[12px] text-stone-500">
               {currentUserEmail ? currentUserEmail : 'Sinkron aman antar-device via cloud'}
@@ -237,69 +166,12 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
                 <LogOut className="h-4 w-4" aria-hidden="true" /> Keluar
               </button>
             </div>
-          ) : view === 'confirm' ? (
-            <div className="space-y-3">
-              <div className="py-1 text-center">
-                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600" aria-hidden="true">
-                  <MailCheck className="h-6 w-6" />
-                </span>
-                <h3 className="mt-3 text-[14px] font-bold text-stone-900">Cek inbox Anda</h3>
-                <p className="mx-auto mt-1 max-w-xs text-[12.5px] leading-relaxed text-stone-500">
-                  Tautan konfirmasi dikirim ke <strong className="mono text-stone-700">{email}</strong>. Klik tautan itu, lalu masuk.
-                </p>
-              </div>
-              <p className="rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-[11.5px] leading-relaxed text-stone-500">
-                Setiap email baru membuat tautan lama hangus — selalu pakai <strong>email terbaru</strong>.
-                Buka tautan saat aplikasi berjalan agar sesi langsung tersambung.
-                Kirim ulang dibatasi 1× per menit agar tidak kena limit email.
-              </p>
-              <form onSubmit={verify} className="space-y-2">
-                <label htmlFor="otp" className="field-label">
-                  Punya kode 6 digit? Masukkan di sini (opsional)
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    id="otp"
-                    autoComplete="one-time-code"
-                    inputMode="numeric"
-                    placeholder="000000"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    className="field mono flex-1 px-3 py-2 text-center text-[13px] uppercase tracking-[0.2em]"
-                  />
-                  <button type="submit" disabled={busy || !otp.trim()} className="btn-primary shrink-0 px-4 py-2 text-[12.5px]">
-                    Verifikasi
-                  </button>
-                </div>
-              </form>
-              {error ? (
-                <p role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[12px] text-rose-800">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {error}
-                </p>
-              ) : null}
-              <div className="flex items-center justify-between border-t border-stone-100 pt-3 text-[12.5px]">
-                <button type="button" onClick={resend} disabled={!canResend} title="Dibatasi 1× per menit agar tidak kena limit email" className="inline-flex items-center gap-1.5 font-medium text-stone-500 hover:text-stone-900 disabled:opacity-50">
-                  <RefreshCw className={`h-3.5 w-3.5 ${resending ? 'animate-spin' : ''}`} aria-hidden="true" />
-                  {resending ? 'Mengirim…' : coolLeft > 0 ? `Tunggu ${coolLeft} dtk` : 'Kirim ulang'}
-                </button>
-                <button type="button" onClick={() => { setView('signin'); setError(null); }} className="font-semibold text-indigo-700 hover:text-indigo-800">
-                  Sudah konfirmasi? Masuk
-                </button>
-              </div>
-            </div>
           ) : (
             <form onSubmit={submit} className="space-y-3.5">
               {error ? (
                 <p role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[12px] leading-relaxed text-rose-800">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span>
-                    {error}
-                    {error.includes('belum dikonfirmasi') ? (
-                      <button type="button" onClick={resend} disabled={!canResend} title="Dibatasi 1× per menit agar tidak kena limit email" className="mt-1.5 block rounded-lg bg-white px-2.5 py-1 text-[11.5px] font-semibold text-rose-700 shadow-sm disabled:opacity-50">
-                        {resending ? 'Mengirim…' : coolLeft > 0 ? `Tunggu ${coolLeft} dtk` : 'Kirim ulang email konfirmasi'}
-                      </button>
-                    ) : null}
-                  </span>
+                  <span>{error}</span>
                 </p>
               ) : null}
               <div>
@@ -371,7 +243,7 @@ export function AuthModal({ open, onClose, currentUserEmail, onAuthSuccess, onSi
                 ) : view === 'signin' ? (
                   'Masuk'
                 ) : (
-                  'Daftar & kirim konfirmasi'
+                  'Buat akun'
                 )}
               </button>
             </form>

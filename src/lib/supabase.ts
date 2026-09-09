@@ -148,49 +148,6 @@ export async function signInWithEmailPassword(
 }
 
 /**
- * Verify OTP / token from confirmation email
- */
-export async function verifyEmailOtp(
-  email: string,
-  token: string
-): Promise<{ user: User | null; error: Error | null }> {
-  if (!isConfigured) {
-    return { user: null, error: new Error('Supabase belum dikonfigurasi di .env.local') };
-  }
-
-  const { data, error } = await supabase.auth.verifyOtp({
-    email: email.trim().toLowerCase(),
-    token: token.trim(),
-    type: 'signup',
-  });
-
-  return { user: data.user, error };
-}
-
-/**
- * Resend confirmation email
- */
-export async function resendConfirmationEmail(
-  email: string
-): Promise<{ error: Error | null }> {
-  if (!isConfigured) {
-    return { error: new Error('Supabase belum dikonfigurasi di .env.local') };
-  }
-
-  const redirectTo = getEmailRedirectUrl();
-
-  const { error } = await supabase.auth.resend({
-    type: 'signup',
-    email: email.trim().toLowerCase(),
-    options: {
-      emailRedirectTo: redirectTo,
-    },
-  });
-
-  return { error };
-}
-
-/**
  * Sign out current user
  */
 export async function signOutAuth(): Promise<{ error: Error | null }> {
