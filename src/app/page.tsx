@@ -471,6 +471,12 @@ export default function Home() {
               onStatusChange={handleStatus}
               onNewProject={newProject}
               onNavigate={goView}
+              onDataChanged={() => {
+                refreshAll();
+                if (selectedId) refreshDetail(selectedId);
+              }}
+              notify={notify}
+              onOpenAuth={() => setAuthOpen(true)}
             />
           )}
 

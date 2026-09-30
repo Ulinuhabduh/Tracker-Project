@@ -781,3 +781,233 @@ export async function importAllData(
   }
 }
 
+// ==========================================
+// IMPORT PROYEK (GABUNG / MERGE — tidak menghapus data lain)
+// Menerima: BackupPayload penuh ATAU satu proyek tunggal:
+//   { project, milestones?, tasks?, logbooks? } atau
+//   { app:'trackpro-project', project, ... }
+// ID bentrok diberi ID baru agar tidak menimpa proyek lain.
+// ==========================================
+
+export interface SingleProjectPayload {
+  app?: string;
+  version?: number;
+  project: Project;
+  milestones?: Milestone[];
+  tasks?: Task[];
+  logbooks?: LogbookEntry[];
+}
+
+function upsertById<T extends { id: string }>(list: T[], items: T[]): T[] {
+  const map = new Map(list.map((x) => [x.id, x]));
+  for (const item of items) map.set(item.id, item);
+  return [...map.values()];
+}
+
+function remapCollidingIds(
+  project: Project,
+  milestones: Milestone[],
+  tasks: Task[],
+  logbooks: LogbookEntry[],
+  existingProjectIds: Set<string>,
+  existingMilestoneIds: Set<string>,
+  existingTaskIds: Set<string>,
+  existingLogIds: Set<string>
+): { project: Project; milestones: Milestone[]; tasks: Task[]; logbooks: LogbookEntry[] } {
+  // Jika id proyek sudah dipakai proyek LAIN (judul beda), beri id baru + petakan relasinya.
+  let projectId = project.id;
+  const projectTakenByOther = existingProjectIds.has(projectId);
+  if (projectTakenByOther) {
+    projectId = generateId();
+  }
+  const msIdMap = new Map<string, string>();
+  const idTaken = (set: Set<string>, id: string) => set.has(id);
+  const nextMilestones = milestones.map((m) => {
+    let newId = m.id;
+    if (idTaken(existingMilestoneIds, m.id)) newId = generateId();
+    msIdMap.set(m.id, newId);
+    return { ...m, id: newId, project_id: projectId };
+  });
+  const nextTasks = tasks.map((t) => ({
+    ...t,
+    id: idTaken(existingTaskIds, t.id) ? generateId() : t.id,
+    project_id: projectId,
+    milestone_id: t.milestone_id ? msIdMap.get(t.milestone_id) || t.milestone_id : null,
+  }));
+  const nextLogs = logbooks.map((l) => ({
+    ...l,
+    id: idTaken(existingLogIds, l.id) ? generateId() : l.id,
+    project_id: projectId,
+  }));
+  return {
+    project: { ...project, id: projectId },
+    milestones: nextMilestones,
+    tasks: nextTasks,
+    logbooks: nextLogs,
+  };
+}
+
+/** Normalisasi file JSON menjadi daftar proyek + relasinya. */
+export function normalizeProjectImport(json: unknown): {
+  ok: boolean;
+  message: string;
+  projects: Project[];
+  milestones: Milestone[];
+  tasks: Task[];
+  logbooks: LogbookEntry[];
+} {
+  const fail = (message: string) => ({
+    ok: false as const,
+    message,
+    projects: [] as Project[],
+    milestones: [] as Milestone[],
+    tasks: [] as Task[],
+    logbooks: [] as LogbookEntry[],
+  });
+  if (!json || typeof json !== 'object') return fail('File JSON tidak valid.');
+  const j = json as Record<string, unknown>;
+
+  // Format 1: backup penuh Tracker Nexus
+  if (j.app === 'trackpro' && Array.isArray(j.projects)) {
+    return {
+      ok: true,
+      message: 'Backup penuh terdeteksi.',
+      projects: j.projects as Project[],
+      milestones: (j.milestones as Milestone[]) || [],
+      tasks: (j.tasks as Task[]) || [],
+      logbooks: (j.logbooks as LogbookEntry[]) || [],
+    };
+  }
+  // Format 2: satu proyek tunggal
+  const single = (j.project as Project | undefined) || (j as unknown as Project);
+  if (single && typeof single === 'object' && typeof (single as Project).title === 'string') {
+    const project = (j.project as Project) || (j as unknown as Project);
+    if (!project.id) (project as Project).id = generateId();
+    return {
+      ok: true,
+      message: 'Satu proyek terdeteksi.',
+      projects: [project as Project],
+      milestones: ((j.milestones as Milestone[]) || []) as Milestone[],
+      tasks: ((j.tasks as Task[]) || []) as Task[],
+      logbooks: ((j.logbooks as LogbookEntry[]) || []) as LogbookEntry[],
+    };
+  }
+  return fail('File bukan JSON proyek Tracker Nexus (butuh {project,...} atau backup {projects:[...]}).');
+}
+
+/**
+ * Impor proyek secara gabung: proyek baru ditambahkan, data lama tetap ada.
+ * Aman untuk file contoh MMS di public/samples/.
+ */
+export async function importProjectsMerge(
+  json: unknown
+): Promise<{ success: boolean; message: string; importedProjectIds?: string[] }> {
+  const loginEmail = requireLoginEmail();
+  const norm = normalizeProjectImport(json);
+  if (!norm.ok || norm.projects.length === 0) {
+    return { success: false, message: norm.message };
+  }
+
+  const existingProjects = getLocal<Project>(STORAGE_KEYS.PROJECTS, []);
+  const existingMilestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, []);
+  const existingTasks = getLocal<Task>(STORAGE_KEYS.TASKS, []);
+  const existingLogs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, []);
+
+  const projectIds = new Set(existingProjects.map((p) => p.id));
+  const milestoneIds = new Set(existingMilestones.map((m) => m.id));
+  const taskIds = new Set(existingTasks.map((t) => t.id));
+  const logIds = new Set(existingLogs.map((l) => l.id));
+
+  let mergedProjects = [...existingProjects];
+  let mergedMilestones = [...existingMilestones];
+  let mergedTasks = [...existingTasks];
+  let mergedLogs = [...existingLogs];
+  const importedIds: string[] = [];
+
+  for (const rawProject of norm.projects) {
+    const relMs = norm.milestones.filter((m) => m.project_id === rawProject.id);
+    const relTasks = norm.tasks.filter((t) => t.project_id === rawProject.id);
+    const relLogs = norm.logbooks.filter((l) => l.project_id === rawProject.id);
+    // Proyek tanpa relasi eksplisit (format tunggal campur): sertakan semua jika hanya 1 proyek
+    const useAll =
+      norm.projects.length === 1 && relMs.length === 0 && relTasks.length === 0 && relLogs.length === 0;
+    const remapped = remapCollidingIds(
+      rawProject,
+      useAll ? norm.milestones : relMs,
+      useAll ? norm.tasks : relTasks,
+      useAll ? norm.logbooks : relLogs,
+      projectIds,
+      milestoneIds,
+      taskIds,
+      logIds
+    );
+    const now = new Date().toISOString();
+    const project: Project = {
+      ...remapped.project,
+      user_email: loginEmail,
+      title: remapped.project.title?.trim() || 'Proyek impor',
+      created_at: remapped.project.created_at || now,
+      updated_at: now,
+    };
+    const milestones = remapped.milestones;
+    const tasks = remapped.tasks;
+    const logbooks = remapped.logbooks.map((l) => ({
+      ...l,
+      user_email: loginEmail,
+      created_at: l.created_at || now,
+      updated_at: now,
+    }));
+
+    mergedProjects = upsertById(mergedProjects, [project]);
+    mergedMilestones = upsertById(mergedMilestones, milestones);
+    mergedTasks = upsertById(mergedTasks, tasks);
+    mergedLogs = upsertById(mergedLogs, logbooks);
+
+    projectIds.add(project.id);
+    milestones.forEach((m) => milestoneIds.add(m.id));
+    tasks.forEach((t) => taskIds.add(t.id));
+    logbooks.forEach((l) => logIds.add(l.id));
+    importedIds.push(project.id);
+  }
+
+  setLocal(STORAGE_KEYS.PROJECTS, mergedProjects);
+  setLocal(STORAGE_KEYS.MILESTONES, mergedMilestones);
+  setLocal(STORAGE_KEYS.TASKS, mergedTasks);
+  setLocal(STORAGE_KEYS.LOGBOOKS, mergedLogs);
+
+  // Sinkron cloud (best-effort, hanya data impor milik akun ini)
+  if (isSupabaseConfigured()) {
+    try {
+      const justProjects = mergedProjects.filter((p) => importedIds.includes(p.id));
+      const justMs = mergedMilestones.filter((m) => importedIds.includes(m.project_id));
+      const justTasks = mergedTasks.filter((t) => importedIds.includes(t.project_id));
+      const justLogs = mergedLogs.filter((l) => importedIds.includes(l.project_id));
+      if (justProjects.length > 0) await supabase.from('projects').upsert(justProjects);
+      if (justMs.length > 0) await supabase.from('milestones').upsert(justMs);
+      if (justTasks.length > 0) await supabase.from('tasks').upsert(justTasks);
+      if (justLogs.length > 0) await supabase.from('logbooks').upsert(justLogs);
+    } catch (err) {
+      console.warn('importProjectsMerge cloud sync notice:', err);
+    }
+  }
+
+  // Progress proyek impor dihitung ulang dari tugasnya
+  for (const pid of importedIds) {
+    try {
+      await recalculateProjectProgress(pid);
+    } catch {
+      /* abaikan */
+    }
+  }
+
+  const n = importedIds.length;
+  return {
+    success: true,
+    message:
+      n === 1
+        ? `Proyek diimpor: ${norm.projects[0]?.title || 'tanpa judul'} (${norm.tasks.length} tugas, ${norm.milestones.length} milestone).`
+        : `${n} proyek diimpor (${norm.tasks.length} tugas, ${norm.milestones.length} milestone).`,
+    importedProjectIds: importedIds,
+  };
+}
+

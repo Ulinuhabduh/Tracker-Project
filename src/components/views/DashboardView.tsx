@@ -16,6 +16,7 @@ import { ActivityBars, StatusDonut } from '../Charts';
 import { ProjectCard } from '../ProjectCard';
 import { getLogTypeMeta } from '@/lib/utils';
 import { Card, EmptyState, SectionHead } from '../ui';
+import { ProjectImport } from '../ProjectImport';
 import type { ViewKey } from '../navigation';
 
 interface DashboardViewProps {
@@ -29,6 +30,9 @@ interface DashboardViewProps {
   onStatusChange: (id: string, s: ProjectStatus) => void;
   onNewProject: () => void;
   onNavigate: (view: ViewKey) => void;
+  onDataChanged?: () => void;
+  notify?: (type: 'success' | 'error' | 'info', msg: string) => void;
+  onOpenAuth?: () => void;
 }
 
 type SortKey = 'updated' | 'deadline' | 'progress' | 'title';
@@ -52,6 +56,9 @@ export function DashboardView({
   onStatusChange,
   onNewProject,
   onNavigate,
+  onDataChanged,
+  notify,
+  onOpenAuth,
 }: DashboardViewProps) {
   const [query, setQuery] = React.useState('');
   const [status, setStatus] = React.useState('all');
@@ -221,6 +228,7 @@ export function DashboardView({
           </Card>
 
           {list.length === 0 ? (
+            <>
             <EmptyState
               icon={<FolderPlus className="h-6 w-6" aria-hidden="true" />}
               title={filtering ? 'Tidak ada hasil' : 'Mulai proyek pertama Anda'}
@@ -242,11 +250,31 @@ export function DashboardView({
                 </>
               }
             />
+            {!filtering && notify ? (
+              <ProjectImport
+                notify={notify}
+                sampleLabel="Contoh MMS"
+                onOpenAuth={onOpenAuth}
+                onImported={() => onDataChanged?.()}
+              />
+            ) : null}
+            </>
           ) : (
             <>
-              <p className="mono text-[11px] text-stone-400">
-                {list.length} dari {projects.length} proyek
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="mono text-[11px] text-stone-400">
+                  {list.length} dari {projects.length} proyek
+                </p>
+                {notify ? (
+                  <ProjectImport
+                    compact
+                    notify={notify}
+                    sampleLabel="Contoh MMS"
+                    onOpenAuth={onOpenAuth}
+                    onImported={() => onDataChanged?.()}
+                  />
+                ) : null}
+              </div>
               <div className="stagger grid gap-3 md:grid-cols-2">
                 {list.map((p) => (
                   <ProjectCard

@@ -22,6 +22,7 @@ import {
   resetToInitialSeed,
 } from '@/lib/project-service';
 import { getUserEmail } from '@/lib/user-session';
+import { ProjectImport } from './ProjectImport';
 
 interface SettingsModalProps {
   open: boolean;
@@ -275,6 +276,20 @@ export function SettingsModal({ open, onClose, onDataChanged, notify, onOpenAuth
                   </>
                 }
               />
+              <div>
+                <ProjectImport
+                  notify={notify}
+                  sampleLabel="Contoh MMS"
+                  onOpenAuth={() => {
+                    onClose();
+                    onOpenAuth();
+                  }}
+                  onImported={() => onDataChanged()}
+                />
+                <p className="mt-1.5 text-[11.5px] leading-relaxed text-stone-500">
+                  Impor gabung: file contoh MMS (Merdeka Magnetic Studio + 7 milestone + 20 tugas) bisa dimuat sekali klik, atau pilih file JSON proyek sendiri. Data lama tidak terhapus.
+                </p>
+              </div>
               <Row
                 title="Data contoh"
                 desc="Kembalikan data demo bawaan untuk eksplorasi."
