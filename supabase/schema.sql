@@ -42,10 +42,13 @@ CREATE TABLE IF NOT EXISTS public.tasks (
     project_id TEXT NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
     milestone_id TEXT REFERENCES public.milestones(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'done')),
+    status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'review', 'done')),
     priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
     due_date DATE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by TEXT DEFAULT '',
+    updated_by TEXT DEFAULT ''
 );
 
 -- 4. TABLE: LOGBOOKS
@@ -80,7 +83,78 @@ ALTER TABLE public.milestones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.logbooks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow public all on projects" ON public.projects;
 CREATE POLICY "Allow public all on projects" ON public.projects FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public all on milestones" ON public.milestones;
 CREATE POLICY "Allow public all on milestones" ON public.milestones FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public all on tasks" ON public.tasks;
 CREATE POLICY "Allow public all on tasks" ON public.tasks FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public all on logbooks" ON public.logbooks;
 CREATE POLICY "Allow public all on logbooks" ON public.logbooks FOR ALL USING (true) WITH CHECK (true);
+
+-- ==============================================================================
+-- MIGRASI FITUR: audit trail, subtask, komentar, feed aktivitas, workflow Review
+-- Aman dijalankan ulang (idempoten). Jalankan di SQL Editor setelah schema awal.
+-- ==============================================================================
+
+-- 1. Kolom audit di tasks + status 'review' (workflow standar: To Do → Berjalan → Review → Selesai)
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS created_by TEXT DEFAULT '';
+ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS updated_by TEXT DEFAULT '';
+ALTER TABLE public.tasks DROP CONSTRAINT IF EXISTS tasks_status_check;
+ALTER TABLE public.tasks ADD CONSTRAINT tasks_status_check
+  CHECK (status IN ('todo', 'in_progress', 'review', 'done'));
+
+-- 2. Kolom audit di projects
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS updated_by TEXT DEFAULT '';
+
+-- 3. TABLE: SUBTASKS (checklist dalam tugas)
+CREATE TABLE IF NOT EXISTS public.subtasks (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    project_id TEXT NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    is_done BOOLEAN NOT NULL DEFAULT FALSE,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 4. TABLE: TASK_COMMENTS (diskusi per tugas)
+CREATE TABLE IF NOT EXISTS public.task_comments (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    project_id TEXT NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
+    author_name TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 5. TABLE: ACTIVITY_LOGS (jejak aktivitas per proyek: siapa, apa, kapan)
+CREATE TABLE IF NOT EXISTS public.activity_logs (
+    id TEXT PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    project_id TEXT NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    actor_name TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL DEFAULT '',
+    entity_type TEXT NOT NULL DEFAULT 'task',
+    entity_id TEXT DEFAULT '',
+    entity_title TEXT NOT NULL DEFAULT '',
+    detail TEXT DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON public.subtasks(task_id);
+CREATE INDEX IF NOT EXISTS idx_subtasks_project_id ON public.subtasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_task_comments_task_id ON public.task_comments(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_comments_project_id ON public.task_comments(project_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_project_id ON public.activity_logs(project_id);
+
+ALTER TABLE public.subtasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.task_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow public all on subtasks" ON public.subtasks;
+CREATE POLICY "Allow public all on subtasks" ON public.subtasks FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public all on task_comments" ON public.task_comments;
+CREATE POLICY "Allow public all on task_comments" ON public.task_comments FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public all on activity_logs" ON public.activity_logs;
+CREATE POLICY "Allow public all on activity_logs" ON public.activity_logs FOR ALL USING (true) WITH CHECK (true);

@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Trash2,
   Upload,
+  User,
   X,
 } from 'lucide-react';
 import { isSupabaseConfigured, testSupabaseConnection } from '@/lib/supabase';
@@ -21,7 +22,7 @@ import {
   importAllData,
   resetToInitialSeed,
 } from '@/lib/project-service';
-import { getUserEmail } from '@/lib/user-session';
+import { getUserEmail, getDisplayName, setDisplayName } from '@/lib/user-session';
 import { ProjectImport } from './ProjectImport';
 
 interface SettingsModalProps {
@@ -62,6 +63,8 @@ export function SettingsModal({ open, onClose, onDataChanged, notify, onOpenAuth
   const [confirm, setConfirm] = React.useState('');
   const [scope, setScope] = React.useState<'all' | 'user_only'>('all');
   const [wiping, setWiping] = React.useState(false);
+  const [displayName, setDisplayNameState] = React.useState('');
+  const [nameSaved, setNameSaved] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
   const userEmail = getUserEmail();
 
@@ -70,6 +73,8 @@ export function SettingsModal({ open, onClose, onDataChanged, notify, onOpenAuth
       setTestMsg(null);
       setConfirm('');
       setScope(userEmail ? 'user_only' : 'all');
+      setDisplayNameState(getDisplayName());
+      setNameSaved(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open ]);
@@ -189,6 +194,45 @@ export function SettingsModal({ open, onClose, onDataChanged, notify, onOpenAuth
         </div>
 
         <div className="space-y-4 overflow-y-auto px-5 py-4">
+          {/* Profil perangkat — 1 akun dipakai bareng */}
+          <section aria-label="Profil perangkat">
+            <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.08em] text-stone-400">
+              <User className="h-3.5 w-3.5" aria-hidden="true" /> Profil perangkat
+            </h3>
+            <div className="rounded-xl border border-stone-200 px-3.5 py-3">
+              <label htmlFor="nama-tampilan" className="field-label">
+                Nama tampilan di perangkat ini
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="nama-tampilan"
+                  autoComplete="off"
+                  placeholder="cth: Budi, Sari…"
+                  value={displayName}
+                  onChange={(e) => {
+                    setDisplayNameState(e.target.value);
+                    setNameSaved(false);
+                  }}
+                  className="field px-3 py-2 text-[13px]"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDisplayName(displayName);
+                    setNameSaved(true);
+                    notify('success', displayName.trim() ? `Nama tampilan: “${displayName.trim()}”.` : 'Nama tampilan dikosongkan.');
+                  }}
+                  className="btn-secondary shrink-0 px-3.5 py-2 text-[12.5px]"
+                >
+                  {nameSaved ? 'Tersimpan' : 'Simpan'}
+                </button>
+              </div>
+              <p className="mt-1.5 text-[11.5px] leading-relaxed text-stone-500">
+                Satu akun dipakai bareng — nama ini dicantumkan sebagai penulis komentar & jejak aktivitas agar jelas siapa berbuat apa.
+              </p>
+            </div>
+          </section>
+
           {/* Cloud */}
           <section aria-label="Penyimpanan cloud">
             <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.08em] text-stone-400">

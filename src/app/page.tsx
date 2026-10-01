@@ -7,22 +7,30 @@ import type {
   Project,
   ProjectDetailData,
   ProjectStatus,
+  Subtask,
   Task,
+  TaskStatus,
 } from '@/lib/types';
 import {
+  deleteComment,
   deleteLogbook,
   deleteMilestone,
   deleteProject,
+  deleteSubtask,
   deleteTask,
   duplicateProject,
   fetchAllTasks,
   fetchProjectDetail,
   fetchProjects,
   fetchRecentLogbooks,
+  logActivity,
+  saveComment,
   saveLogbook,
   saveMilestone,
   saveProject,
+  saveSubtask,
   saveTask,
+  takeCloudWarning,
 } from '@/lib/project-service';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { clearUserEmail, getUserEmail, setUserEmail } from '@/lib/user-session';
@@ -80,6 +88,8 @@ export default function Home() {
       setProjects(p);
       setAllTasks(t);
       setRecentLogs(l);
+      const w = takeCloudWarning();
+      if (w) notify('error', w);
     } catch {
       notify('error', 'Gagal memuat data. Coba muat ulang halaman.');
     }
@@ -89,6 +99,8 @@ export default function Home() {
     async (id: string) => {
       try {
         setDetail(await fetchProjectDetail(id));
+        const w = takeCloudWarning();
+        if (w) notify('error', w);
       } catch {
         notify('error', 'Gagal memuat detail proyek.');
       }
@@ -301,6 +313,76 @@ export default function Home() {
     }
   };
 
+  const handleSaveSubtask = async (s: Partial<Subtask> & { task_id: string; project_id: string }) => {
+    if (!requireAuth()) return;
+    try {
+      await saveSubtask(s);
+      if (selectedId) await refreshDetail(selectedId);
+    } catch (err) {
+      handleWriteError(err, 'Gagal menyimpan subtask.');
+    }
+  };
+
+  const handleDeleteSubtask = async (id: string) => {
+    if (!requireAuth()) return;
+    try {
+      await deleteSubtask(id);
+      if (selectedId) await refreshDetail(selectedId);
+    } catch (err) {
+      handleWriteError(err, 'Gagal menghapus subtask.');
+    }
+  };
+
+  const handleSaveComment = async (taskId: string, content: string) => {
+    if (!selectedId || !requireAuth()) return;
+    try {
+      await saveComment({ task_id: taskId, project_id: selectedId, content });
+      await refreshDetail(selectedId);
+    } catch (err) {
+      if (err instanceof Error && err.message === 'EMPTY_COMMENT') return;
+      handleWriteError(err, 'Gagal menyimpan komentar.');
+    }
+  };
+
+  const handleDeleteComment = async (id: string) => {
+    if (!requireAuth()) return;
+    try {
+      await deleteComment(id);
+      if (selectedId) await refreshDetail(selectedId);
+    } catch (err) {
+      handleWriteError(err, 'Gagal menghapus komentar.');
+    }
+  };
+
+  const handleBulkStatus = async (ids: string[], status: TaskStatus) => {
+    if (!selectedId || !requireAuth() || ids.length === 0) return;
+    try {
+      for (const id of ids) {
+        await saveTask({ id, project_id: selectedId, status }, { silent: true });
+      }
+      await logActivity(selectedId, 'bulk_update', 'task', `${ids.length} tugas`, {
+        detail: `→ ${status}`,
+      });
+      await afterTaskChange();
+      notify('success', `${ids.length} tugas dipindah ke ${status}.`);
+    } catch (err) {
+      handleWriteError(err, 'Gagal memproses tugas terpilih.');
+    }
+  };
+
+  const handleBulkDelete = async (ids: string[]) => {
+    if (!selectedId || !requireAuth() || ids.length === 0) return;
+    try {
+      for (const id of ids) {
+        await deleteTask(id, selectedId);
+      }
+      await afterTaskChange();
+      notify('info', `${ids.length} tugas dihapus.`);
+    } catch (err) {
+      handleWriteError(err, 'Gagal menghapus tugas terpilih.');
+    }
+  };
+
   const handleSaveMilestone = async (m: Partial<Milestone>) => {
     if (!requireAuth()) return;
     try {
@@ -433,6 +515,12 @@ export default function Home() {
               onDeleteMilestone={handleDeleteMilestone}
               onSaveLogbook={handleSaveLogbook}
               onDeleteLogbook={handleDeleteLogbook}
+              onSaveSubtask={handleSaveSubtask}
+              onDeleteSubtask={handleDeleteSubtask}
+              onSaveComment={handleSaveComment}
+              onDeleteComment={handleDeleteComment}
+              onBulkStatus={handleBulkStatus}
+              onBulkDelete={handleBulkDelete}
             />
           ) : selectedId ? (
             <div className="space-y-3" aria-label="Memuat…">

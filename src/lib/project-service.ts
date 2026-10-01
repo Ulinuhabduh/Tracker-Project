@@ -1,9 +1,13 @@
 import { supabase, isSupabaseConfigured } from './supabase';
-import { getUserEmail } from './user-session';
+import { getUserEmail, getActorName } from './user-session';
 import {
+  ActivityAction,
+  ActivityLog,
   Project,
   Milestone,
+  Subtask,
   Task,
+  TaskComment,
   LogbookEntry,
   ProjectDetailData,
 } from './types';
@@ -19,6 +23,9 @@ const STORAGE_KEYS = {
   MILESTONES: 'track_progress_milestones',
   TASKS: 'track_progress_tasks',
   LOGBOOKS: 'track_progress_logbooks',
+  SUBTASKS: 'track_progress_subtasks',
+  COMMENTS: 'track_progress_comments',
+  ACTIVITIES: 'track_progress_activities',
 };
 
 function getLocal<T>(key: string, defaultVal: T[]): T[] {
@@ -66,6 +73,134 @@ async function getOwnProjectIds(): Promise<Set<string>> {
 }
 
 // ==========================================
+// KETAHANAN CLOUD: tulis gagal → baca lokal sementara (jangan tampil basi)
+// Supabase-js TIDAK melempar error API (dikembalikan di { error }), jadi semua
+// tulis WAJIB cek error. Kalau cloud gagal (mis. skema belum dimigrasi /
+// offline), tandai degraded agar baca berikutnya pakai data lokal yang baru,
+// dan simpan 1 peringatan untuk ditampilkan sebagai toast oleh UI.
+// ==========================================
+let cloudDegraded = false;
+let cloudWarning: string | null = null;
+
+export function isCloudDegraded(): boolean {
+  return cloudDegraded;
+}
+
+/** Ambil (sekali saja) peringatan sinkron untuk ditampilkan ke pengguna. */
+export function takeCloudWarning(): string | null {
+  const w = cloudWarning;
+  cloudWarning = null;
+  return w;
+}
+
+function flagCloudIssue(err: unknown, context: string): void {
+  cloudDegraded = true;
+  const msg =
+    err instanceof Error
+      ? err.message
+      : (err as { message?: string } | null)?.message || String(err);
+  console.warn(`Supabase ${context} gagal, pakai lokal sementara:`, msg);
+  cloudWarning =
+    'Perubahan tersimpan di perangkat, tapi gagal sinkron ke cloud. Cek koneksi internet, atau jalankan blok MIGRASI FITUR di supabase/schema.sql sekali di SQL Editor Supabase.';
+}
+
+function markCloudOk(): void {
+  cloudDegraded = false;
+}
+
+/** Payload aman untuk cloud: hanya kolom skema awal (audit hanya lokal sampai migrasi). */
+function cloudTaskPayload(t: Task): Record<string, unknown> {
+  return {
+    id: t.id,
+    project_id: t.project_id,
+    milestone_id: t.milestone_id ?? null,
+    title: t.title,
+    status: t.status,
+    priority: t.priority,
+    due_date: t.due_date ?? null,
+    created_at: t.created_at,
+  };
+}
+
+/** Payload aman untuk cloud: tanpa kolom audit lokal. */
+function cloudProjectPayload(p: Project): Record<string, unknown> {
+  return {
+    id: p.id,
+    user_email: p.user_email,
+    title: p.title,
+    description: p.description,
+    category: p.category,
+    status: p.status,
+    priority: p.priority,
+    progress_percent: p.progress_percent,
+    start_date: p.start_date,
+    due_date: p.due_date,
+    tags: p.tags,
+    created_at: p.created_at,
+    updated_at: p.updated_at,
+  };
+}
+
+// ==========================================
+// ACTIVITY LOG (audit trail: siapa, berbuat apa, kapan)
+// Satu akun dipakai bareng → penulis diambil dari nama tampilan per perangkat.
+// ==========================================
+export async function logActivity(
+  projectId: string,
+  action: ActivityAction,
+  entityType: ActivityLog['entity_type'],
+  entityTitle: string,
+  opts?: { entityId?: string; detail?: string; actorName?: string }
+): Promise<void> {
+  if (!projectId) return;
+  const now = new Date().toISOString();
+  const entry: ActivityLog = {
+    id: generateId(),
+    project_id: projectId,
+    actor_name: opts?.actorName || getActorName(),
+    action,
+    entity_type: entityType,
+    entity_id: opts?.entityId || '',
+    entity_title: entityTitle,
+    detail: opts?.detail || '',
+    created_at: now,
+  };
+
+  if (isSupabaseConfigured()) {
+    try {
+      await supabase.from('activity_logs').insert(entry);
+    } catch {
+      /* tabel mungkin belum ada (jalankan migrasi schema.sql) — lokal tetap jalan */
+    }
+  }
+
+  const list = getLocal<ActivityLog>(STORAGE_KEYS.ACTIVITIES, []);
+  // Batasi total agar penyimpanan lokal tidak membengkak
+  setLocal(STORAGE_KEYS.ACTIVITIES, [entry, ...list].slice(0, 2000));
+}
+
+/** Jejak aktivitas satu proyek, terbaru dulu. */
+export async function fetchActivities(projectId: string, limit = 100): Promise<ActivityLog[]> {
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (!error && data) return data as ActivityLog[];
+    } catch {
+      /* fallback lokal */
+    }
+  }
+  return getLocal<ActivityLog>(STORAGE_KEYS.ACTIVITIES, [])
+    .filter((a) => a.project_id === projectId)
+    .sort((a, b) => (b.created_at > a.created_at ? 1 : -1))
+    .slice(0, limit);
+}
+
+// ==========================================
 // PROJECTS (STRICT PER-ACCOUNT: hanya milik akun yang masuk)
 // ==========================================
 export async function fetchProjects(): Promise<Project[]> {
@@ -74,7 +209,7 @@ export async function fetchProjects(): Promise<Project[]> {
   // Belum masuk: tidak tampilkan data apa pun (bukan demo / milik orang lain)
   if (!currentEmail) return [];
 
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && !cloudDegraded) {
     try {
       const { data, error } = await supabase
         .from('projects')
@@ -103,13 +238,16 @@ export async function fetchProjectDetail(id: string): Promise<ProjectDetailData 
   const currentEmail = getUserEmail();
   if (!currentEmail) return null;
 
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && !cloudDegraded) {
     try {
-      const [projRes, msRes, taskRes, logRes] = await Promise.all([
+      const [projRes, msRes, taskRes, logRes, subRes, comRes, actRes] = await Promise.all([
         supabase.from('projects').select('*').eq('id', id).single(),
         supabase.from('milestones').select('*').eq('project_id', id).order('created_at', { ascending: true }),
         supabase.from('tasks').select('*').eq('project_id', id).order('created_at', { ascending: true }),
         supabase.from('logbooks').select('*').eq('project_id', id).order('created_at', { ascending: false }),
+        supabase.from('subtasks').select('*').eq('project_id', id).order('position', { ascending: true }),
+        supabase.from('task_comments').select('*').eq('project_id', id).order('created_at', { ascending: true }),
+        supabase.from('activity_logs').select('*').eq('project_id', id).order('created_at', { ascending: false }).limit(100),
       ]);
 
       if (!projRes.error && projRes.data) {
@@ -121,6 +259,9 @@ export async function fetchProjectDetail(id: string): Promise<ProjectDetailData 
           milestones: (msRes.data as Milestone[]) || [],
           tasks: (taskRes.data as Task[]) || [],
           logbooks: (logRes.data as LogbookEntry[]) || [],
+          subtasks: (!subRes.error && subRes.data ? (subRes.data as Subtask[]) : getLocal<Subtask>(STORAGE_KEYS.SUBTASKS, []).filter((s) => s.project_id === id)),
+          comments: (!comRes.error && comRes.data ? (comRes.data as TaskComment[]) : getLocal<TaskComment>(STORAGE_KEYS.COMMENTS, []).filter((c) => c.project_id === id)),
+          activities: (!actRes.error && actRes.data ? (actRes.data as ActivityLog[]) : await fetchActivities(id)),
         };
       }
     } catch (err) {
@@ -144,6 +285,9 @@ export async function fetchProjectDetail(id: string): Promise<ProjectDetailData 
     milestones: allMilestones.filter((m) => m.project_id === id),
     tasks: allTasks.filter((t) => t.project_id === id),
     logbooks: allLogbooks.filter((l) => l.project_id === id),
+    subtasks: getLocal<Subtask>(STORAGE_KEYS.SUBTASKS, []).filter((s) => s.project_id === id),
+    comments: getLocal<TaskComment>(STORAGE_KEYS.COMMENTS, []).filter((c) => c.project_id === id),
+    activities: await fetchActivities(id),
   };
 }
 
@@ -174,11 +318,14 @@ export async function saveProject(projectData: Partial<Project>): Promise<Projec
 
     if (isSupabaseConfigured()) {
       try {
-        const { data, error } = await supabase.from('projects').insert(projectRecord).select().single();
-        if (!error && data) return data as Project;
-        if (error) console.error('Supabase saveProject insert error:', error.message);
+        const { data, error } = await supabase.from('projects').insert(cloudProjectPayload(projectRecord)).select().single();
+        if (!error && data) {
+          markCloudOk();
+          return data as Project;
+        }
+        if (error) flagCloudIssue(error, 'saveProject insert');
       } catch (err) {
-        console.error('Supabase saveProject exception:', err);
+        flagCloudIssue(err, 'saveProject insert');
       }
     }
 
@@ -231,20 +378,31 @@ export async function saveProject(projectData: Partial<Project>): Promise<Projec
     tags: projectData.tags ?? base.tags,
     created_at: base.created_at || now,
     updated_at: now,
+    updated_by: getActorName(),
   };
+
+  if ((existing?.status ?? base.status) !== projectRecord.status) {
+    await logActivity(id, 'project_status', 'project', projectRecord.title, {
+      entityId: id,
+      detail: `${existing?.status ?? base.status} → ${projectRecord.status}`,
+    });
+  }
 
   if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase
         .from('projects')
-        .update(projectRecord)
+        .update(cloudProjectPayload(projectRecord))
         .eq('id', id)
         .select()
         .single();
-      if (!error && data) return data as Project;
-      if (error) console.error('Supabase saveProject update error:', error.message);
+      if (!error && data) {
+        markCloudOk();
+        return data as Project;
+      }
+      if (error) flagCloudIssue(error, 'saveProject update');
     } catch (err) {
-      console.error('Supabase saveProject exception:', err);
+      flagCloudIssue(err, 'saveProject update');
     }
   }
 
@@ -279,6 +437,19 @@ export async function deleteProject(id: string): Promise<boolean> {
   const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
   setLocal(STORAGE_KEYS.LOGBOOKS, logs.filter((l) => l.project_id !== id));
 
+  setLocal(
+    STORAGE_KEYS.SUBTASKS,
+    getLocal<Subtask>(STORAGE_KEYS.SUBTASKS, []).filter((s) => s.project_id !== id)
+  );
+  setLocal(
+    STORAGE_KEYS.COMMENTS,
+    getLocal<TaskComment>(STORAGE_KEYS.COMMENTS, []).filter((c) => c.project_id !== id)
+  );
+  setLocal(
+    STORAGE_KEYS.ACTIVITIES,
+    getLocal<ActivityLog>(STORAGE_KEYS.ACTIVITIES, []).filter((a) => a.project_id !== id)
+  );
+
   return true;
 }
 
@@ -287,11 +458,12 @@ export async function deleteProject(id: string): Promise<boolean> {
 // Update bersifat parsial: field yang tidak dikirim tetap dipertahankan
 // agar ubah status tidak mereset judul menjadi "New Task".
 // ==========================================
-export async function saveTask(taskData: Partial<Task>): Promise<Task> {
+export async function saveTask(taskData: Partial<Task>, opts?: { silent?: boolean }): Promise<Task> {
   requireLoginEmail();
   const isNew = !taskData.id;
   const now = new Date().toISOString();
   const id = taskData.id || generateId();
+  const actor = getActorName();
 
   if (isNew) {
     const task: Task = {
@@ -303,13 +475,18 @@ export async function saveTask(taskData: Partial<Task>): Promise<Task> {
       priority: taskData.priority || 'medium',
       due_date: taskData.due_date,
       created_at: taskData.created_at || now,
+      updated_at: now,
+      created_by: actor,
+      updated_by: actor,
     };
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('tasks').insert(task);
+        const { error } = await supabase.from('tasks').insert(cloudTaskPayload(task));
+        if (error) flagCloudIssue(error, 'saveTask insert');
+        else markCloudOk();
       } catch (err) {
-        console.error('Supabase saveTask exception:', err);
+        flagCloudIssue(err, 'saveTask insert');
       }
     }
 
@@ -317,6 +494,12 @@ export async function saveTask(taskData: Partial<Task>): Promise<Task> {
     setLocal(STORAGE_KEYS.TASKS, [...tasks, task]);
 
     await recalculateProjectProgress(task.project_id);
+    if (!opts?.silent) {
+      await logActivity(task.project_id, 'task_created', 'task', task.title, {
+        entityId: task.id,
+        actorName: actor,
+      });
+    }
     return task;
   }
 
@@ -341,6 +524,7 @@ export async function saveTask(taskData: Partial<Task>): Promise<Task> {
     due_date: undefined,
     created_at: now,
   };
+  const prevStatus = base.status;
 
   const task: Task = {
     ...base,
@@ -352,13 +536,18 @@ export async function saveTask(taskData: Partial<Task>): Promise<Task> {
     priority: taskData.priority ?? base.priority,
     due_date: 'due_date' in taskData ? taskData.due_date : base.due_date,
     created_at: base.created_at || now,
+    updated_at: now,
+    created_by: base.created_by || actor,
+    updated_by: actor,
   };
 
   if (isSupabaseConfigured()) {
     try {
-      await supabase.from('tasks').update(task).eq('id', id);
+      const { error } = await supabase.from('tasks').update(cloudTaskPayload(task)).eq('id', id);
+      if (error) flagCloudIssue(error, 'saveTask update');
+      else markCloudOk();
     } catch (err) {
-      console.error('Supabase saveTask exception:', err);
+      flagCloudIssue(err, 'saveTask update');
     }
   }
 
@@ -369,30 +558,175 @@ export async function saveTask(taskData: Partial<Task>): Promise<Task> {
   );
 
   await recalculateProjectProgress(task.project_id);
+  if (!opts?.silent && prevStatus !== task.status) {
+    await logActivity(task.project_id, 'task_status', 'task', task.title, {
+      entityId: task.id,
+      detail: `${prevStatus} → ${task.status}`,
+      actorName: actor,
+    });
+  }
   return task;
 }
 
 export async function deleteTask(id: string, projectId: string): Promise<boolean> {
   requireLoginEmail();
+  const actor = getActorName();
+  const localTasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
+  const target = localTasks.find((t) => t.id === id);
   if (isSupabaseConfigured()) {
     try {
       await supabase.from('tasks').delete().eq('id', id);
+      await supabase.from('subtasks').delete().eq('task_id', id);
+      await supabase.from('task_comments').delete().eq('task_id', id);
     } catch (err) {
       console.error('Supabase deleteTask exception:', err);
     }
   }
 
-  const tasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
-  setLocal(STORAGE_KEYS.TASKS, tasks.filter((t) => t.id !== id));
+  setLocal(STORAGE_KEYS.TASKS, localTasks.filter((t) => t.id !== id));
+  setLocal(
+    STORAGE_KEYS.SUBTASKS,
+    getLocal<Subtask>(STORAGE_KEYS.SUBTASKS, []).filter((s) => s.task_id !== id)
+  );
+  setLocal(
+    STORAGE_KEYS.COMMENTS,
+    getLocal<TaskComment>(STORAGE_KEYS.COMMENTS, []).filter((c) => c.task_id !== id)
+  );
 
   await recalculateProjectProgress(projectId);
+  if (target) {
+    await logActivity(projectId, 'task_deleted', 'task', target.title, {
+      entityId: id,
+      actorName: actor,
+    });
+  }
+  return true;
+}
+
+// ==========================================
+// SUBTASKS (checklist dalam tugas)
+// ==========================================
+export async function saveSubtask(
+  data: Partial<Subtask> & { task_id: string; project_id: string }
+): Promise<Subtask> {
+  requireLoginEmail();
+  const now = new Date().toISOString();
+  const id = data.id || generateId();
+  const isNew = !data.id;
+  const list = getLocal<Subtask>(STORAGE_KEYS.SUBTASKS, []);
+  const existing = list.find((s) => s.id === id);
+
+  const record: Subtask = {
+    id,
+    project_id: data.project_id,
+    task_id: data.task_id,
+    title: data.title !== undefined ? data.title.trim() || existing?.title || 'Subtask' : existing?.title || 'Subtask',
+    is_done: data.is_done ?? existing?.is_done ?? false,
+    position: data.position ?? existing?.position ?? list.filter((s) => s.task_id === data.task_id).length,
+    created_at: existing?.created_at || now,
+  };
+
+  if (isSupabaseConfigured()) {
+    try {
+      if (isNew) await supabase.from('subtasks').insert(record);
+      else await supabase.from('subtasks').update(record).eq('id', id);
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  setLocal(
+    STORAGE_KEYS.SUBTASKS,
+    existing ? list.map((s) => (s.id === id ? record : s)) : [...list, record]
+  );
+
+  if (!isNew && record.is_done && !existing?.is_done) {
+    const tasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
+    const parent = tasks.find((t) => t.id === record.task_id);
+    await logActivity(record.project_id, 'subtask_done', 'subtask', record.title, {
+      entityId: record.id,
+      detail: parent ? `pada tugas “${parent.title}”` : '',
+    });
+  }
+  return record;
+}
+
+export async function deleteSubtask(id: string): Promise<boolean> {
+  requireLoginEmail();
+  if (isSupabaseConfigured()) {
+    try {
+      await supabase.from('subtasks').delete().eq('id', id);
+    } catch {
+      /* best-effort */
+    }
+  }
+  setLocal(
+    STORAGE_KEYS.SUBTASKS,
+    getLocal<Subtask>(STORAGE_KEYS.SUBTASKS, []).filter((s) => s.id !== id)
+  );
+  return true;
+}
+
+// ==========================================
+// TASK COMMENTS (diskusi per tugas)
+// ==========================================
+export async function saveComment(
+  data: Partial<TaskComment> & { task_id: string; project_id: string }
+): Promise<TaskComment> {
+  requireLoginEmail();
+  const now = new Date().toISOString();
+  const content = (data.content || '').trim();
+  if (!content) throw new Error('EMPTY_COMMENT');
+  const actor = getActorName();
+  const record: TaskComment = {
+    id: data.id || generateId(),
+    project_id: data.project_id,
+    task_id: data.task_id,
+    author_name: data.author_name?.trim() || actor,
+    content,
+    created_at: data.created_at || now,
+  };
+
+  if (isSupabaseConfigured()) {
+    try {
+      await supabase.from('task_comments').insert(record);
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  setLocal(STORAGE_KEYS.COMMENTS, [...getLocal<TaskComment>(STORAGE_KEYS.COMMENTS, []), record]);
+
+  const tasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
+  const parent = tasks.find((t) => t.id === record.task_id);
+  await logActivity(record.project_id, 'comment_added', 'comment', parent?.title || 'Tugas', {
+    entityId: record.id,
+    detail: content.slice(0, 120),
+    actorName: record.author_name,
+  });
+  return record;
+}
+
+export async function deleteComment(id: string): Promise<boolean> {
+  requireLoginEmail();
+  if (isSupabaseConfigured()) {
+    try {
+      await supabase.from('task_comments').delete().eq('id', id);
+    } catch {
+      /* best-effort */
+    }
+  }
+  setLocal(
+    STORAGE_KEYS.COMMENTS,
+    getLocal<TaskComment>(STORAGE_KEYS.COMMENTS, []).filter((c) => c.id !== id)
+  );
   return true;
 }
 
 export async function recalculateProjectProgress(projectId: string): Promise<number> {
   let projectTasks: Task[] = [];
 
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && !cloudDegraded) {
     try {
       const { data } = await supabase.from('tasks').select('*').eq('project_id', projectId);
       if (data) projectTasks = data as Task[];
@@ -469,14 +803,19 @@ export async function saveMilestone(milestoneData: Partial<Milestone>): Promise<
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('milestones').insert(milestone);
+        const { error } = await supabase.from('milestones').insert(milestone);
+        if (error) flagCloudIssue(error, 'saveMilestone insert');
+        else markCloudOk();
       } catch (err) {
-        console.error('Supabase saveMilestone exception:', err);
+        flagCloudIssue(err, 'saveMilestone insert');
       }
     }
 
     const milestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
     setLocal(STORAGE_KEYS.MILESTONES, [...milestones, milestone]);
+    await logActivity(milestone.project_id, 'milestone_created', 'milestone', milestone.title, {
+      entityId: milestone.id,
+    });
     return milestone;
   }
 
@@ -513,9 +852,11 @@ export async function saveMilestone(milestoneData: Partial<Milestone>): Promise<
 
   if (isSupabaseConfigured()) {
     try {
-      await supabase.from('milestones').update(milestone).eq('id', id);
+      const { error } = await supabase.from('milestones').update(milestone).eq('id', id);
+      if (error) flagCloudIssue(error, 'saveMilestone update');
+      else markCloudOk();
     } catch (err) {
-      console.error('Supabase saveMilestone exception:', err);
+      flagCloudIssue(err, 'saveMilestone update');
     }
   }
 
@@ -524,11 +865,18 @@ export async function saveMilestone(milestoneData: Partial<Milestone>): Promise<
     STORAGE_KEYS.MILESTONES,
     found ? localList.map((m) => (m.id === id ? milestone : m)) : [...localList, milestone]
   );
+  if ((existing?.is_completed ?? false) !== milestone.is_completed && milestone.is_completed) {
+    await logActivity(milestone.project_id, 'milestone_done', 'milestone', milestone.title, {
+      entityId: milestone.id,
+    });
+  }
   return milestone;
 }
 
 export async function deleteMilestone(id: string): Promise<boolean> {
   requireLoginEmail();
+  const localList = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
+  const target = localList.find((m) => m.id === id);
   if (isSupabaseConfigured()) {
     try {
       await supabase.from('milestones').delete().eq('id', id);
@@ -539,6 +887,11 @@ export async function deleteMilestone(id: string): Promise<boolean> {
 
   const milestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
   setLocal(STORAGE_KEYS.MILESTONES, milestones.filter((m) => m.id !== id));
+  if (target) {
+    await logActivity(target.project_id, 'milestone_deleted', 'milestone', target.title, {
+      entityId: id,
+    });
+  }
   return true;
 }
 
@@ -571,15 +924,26 @@ export async function saveLogbook(logData: Partial<LogbookEntry>): Promise<Logbo
     if (isSupabaseConfigured()) {
       try {
         const { data, error } = await supabase.from('logbooks').insert(entry).select().single();
-        if (!error && data) return data as LogbookEntry;
-        if (error) console.error('Supabase saveLogbook insert error:', error.message);
+        if (!error && data) {
+          markCloudOk();
+          await logActivity(entry.project_id, 'logbook_created', 'logbook', entry.title, {
+            entityId: entry.id,
+            actorName: entry.author_name,
+          });
+          return data as LogbookEntry;
+        }
+        if (error) flagCloudIssue(error, 'saveLogbook insert');
       } catch (err) {
-        console.error('Supabase saveLogbook exception:', err);
+        flagCloudIssue(err, 'saveLogbook insert');
       }
     }
 
     const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
     setLocal(STORAGE_KEYS.LOGBOOKS, [entry, ...logs]);
+    await logActivity(entry.project_id, 'logbook_created', 'logbook', entry.title, {
+      entityId: entry.id,
+      actorName: entry.author_name,
+    });
     return entry;
   }
 
@@ -635,10 +999,13 @@ export async function saveLogbook(logData: Partial<LogbookEntry>): Promise<Logbo
         .eq('id', id)
         .select()
         .single();
-      if (!error && data) return data as LogbookEntry;
-      if (error) console.error('Supabase saveLogbook update error:', error.message);
+      if (!error && data) {
+        markCloudOk();
+        return data as LogbookEntry;
+      }
+      if (error) flagCloudIssue(error, 'saveLogbook update');
     } catch (err) {
-      console.error('Supabase saveLogbook exception:', err);
+      flagCloudIssue(err, 'saveLogbook update');
     }
   }
 
@@ -676,6 +1043,8 @@ export async function syncLocalDataToSupabase(email: string): Promise<{ success:
     const localMilestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
     const localTasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
     const localLogs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
+    const localSubtasks = getLocal<Subtask>(STORAGE_KEYS.SUBTASKS, []);
+    const localComments = getLocal<TaskComment>(STORAGE_KEYS.COMMENTS, []);
 
     // Upsert projects with email
     const projectsWithEmail = localProjects.map((p) => ({ ...p, user_email: email }));
@@ -690,6 +1059,12 @@ export async function syncLocalDataToSupabase(email: string): Promise<{ success:
     if (localLogs.length > 0) {
       const logsWithEmail = localLogs.map((l) => ({ ...l, user_email: email }));
       await supabase.from('logbooks').upsert(logsWithEmail);
+    }
+    if (localSubtasks.length > 0) {
+      await supabase.from('subtasks').upsert(localSubtasks);
+    }
+    if (localComments.length > 0) {
+      await supabase.from('task_comments').upsert(localComments);
     }
 
     return { success: true, count: localProjects.length };
@@ -723,6 +1098,9 @@ export async function deleteAllData(scope: 'all' | 'user_only' = 'all'): Promise
         }
       } else {
         // Delete all data in Supabase
+        await supabase.from('task_comments').delete().neq('id', '___');
+        await supabase.from('subtasks').delete().neq('id', '___');
+        await supabase.from('activity_logs').delete().neq('id', '___');
         await supabase.from('tasks').delete().neq('id', '___');
         await supabase.from('milestones').delete().neq('id', '___');
         await supabase.from('logbooks').delete().neq('id', '___');
@@ -749,12 +1127,28 @@ export async function deleteAllData(scope: 'all' | 'user_only' = 'all'): Promise
 
       const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, []);
       setLocal(STORAGE_KEYS.LOGBOOKS, logs.filter((l) => remainingIds.has(l.project_id) && l.user_email !== currentEmail));
+
+      setLocal(
+        STORAGE_KEYS.SUBTASKS,
+        getLocal<Subtask>(STORAGE_KEYS.SUBTASKS, []).filter((s) => remainingIds.has(s.project_id))
+      );
+      setLocal(
+        STORAGE_KEYS.COMMENTS,
+        getLocal<TaskComment>(STORAGE_KEYS.COMMENTS, []).filter((c) => remainingIds.has(c.project_id))
+      );
+      setLocal(
+        STORAGE_KEYS.ACTIVITIES,
+        getLocal<ActivityLog>(STORAGE_KEYS.ACTIVITIES, []).filter((a) => remainingIds.has(a.project_id))
+      );
     } else {
       // Complete wipe
       setLocal(STORAGE_KEYS.PROJECTS, []);
       setLocal(STORAGE_KEYS.MILESTONES, []);
       setLocal(STORAGE_KEYS.TASKS, []);
       setLocal(STORAGE_KEYS.LOGBOOKS, []);
+      setLocal(STORAGE_KEYS.SUBTASKS, []);
+      setLocal(STORAGE_KEYS.COMMENTS, []);
+      setLocal(STORAGE_KEYS.ACTIVITIES, []);
     }
   }
 
@@ -776,6 +1170,9 @@ export function resetToInitialSeed(): void {
   localStorage.setItem(STORAGE_KEYS.MILESTONES, JSON.stringify(INITIAL_MILESTONES));
   localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
   localStorage.setItem(STORAGE_KEYS.LOGBOOKS, JSON.stringify(logbooks));
+  localStorage.setItem(STORAGE_KEYS.SUBTASKS, JSON.stringify([]));
+  localStorage.setItem(STORAGE_KEYS.COMMENTS, JSON.stringify([]));
+  localStorage.setItem(STORAGE_KEYS.ACTIVITIES, JSON.stringify([]));
 }
 
 // ==========================================
@@ -787,7 +1184,7 @@ export async function fetchAllTasks(): Promise<Task[]> {
   const currentEmail = getUserEmail();
   if (!currentEmail) return [];
 
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && !cloudDegraded) {
     try {
       const ownIds = await getOwnProjectIds();
       if (ownIds.size === 0) return [];
@@ -811,7 +1208,7 @@ export async function fetchRecentLogbooks(limit = 12): Promise<LogbookEntry[]> {
   const currentEmail = getUserEmail();
   if (!currentEmail) return [];
 
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && !cloudDegraded) {
     try {
       const { data, error } = await supabase
         .from('logbooks')
@@ -837,7 +1234,7 @@ export async function fetchAllMilestones(): Promise<Milestone[]> {
   const currentEmail = getUserEmail();
   if (!currentEmail) return [];
 
-  if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured() && !cloudDegraded) {
     try {
       const ownIds = await getOwnProjectIds();
       if (ownIds.size === 0) return [];
@@ -884,13 +1281,26 @@ export async function duplicateProject(id: string): Promise<Project | null> {
     });
   }
   for (const t of detail.tasks) {
-    await saveTask({
-      project_id: copy.id,
-      title: t.title,
-      status: 'todo',
-      priority: t.priority,
-      due_date: t.due_date,
-    });
+    const copied = await saveTask(
+      {
+        project_id: copy.id,
+        title: t.title,
+        status: 'todo',
+        priority: t.priority,
+        due_date: t.due_date,
+      },
+      { silent: true }
+    );
+    const subs = (detail.subtasks || []).filter((s) => s.task_id === t.id);
+    for (const s of subs) {
+      await saveSubtask({
+        project_id: copy.id,
+        task_id: copied.id,
+        title: s.title,
+        is_done: false,
+        position: s.position,
+      });
+    }
   }
   return copy;
 }
@@ -907,6 +1317,8 @@ export interface BackupPayload {
   milestones: Milestone[];
   tasks: Task[];
   logbooks: LogbookEntry[];
+  subtasks?: Subtask[];
+  comments?: TaskComment[];
 }
 
 /** Gather the full visible workspace into one portable JSON object. */
@@ -927,6 +1339,8 @@ export async function exportAllData(): Promise<BackupPayload> {
     milestones: milestones.filter((m) => ids.has(m.project_id)),
     tasks: tasks.filter((t) => ids.has(t.project_id)),
     logbooks: logbooks.filter((l) => ids.has(l.project_id)),
+    subtasks: getLocal<Subtask>(STORAGE_KEYS.SUBTASKS, []).filter((s) => ids.has(s.project_id)),
+    comments: getLocal<TaskComment>(STORAGE_KEYS.COMMENTS, []).filter((c) => ids.has(c.project_id)),
   };
 }
 
@@ -943,10 +1357,14 @@ export async function importAllData(
     // Cap semua data impor sebagai milik akun ini agar tidak bocor antar-akun
     const projects = payload.projects.map((p) => ({ ...p, user_email: loginEmail }));
     const logbooks = (payload.logbooks || []).map((l) => ({ ...l, user_email: loginEmail }));
+    const subtasks = payload.subtasks || [];
+    const comments = payload.comments || [];
     setLocal(STORAGE_KEYS.PROJECTS, projects);
     setLocal(STORAGE_KEYS.MILESTONES, payload.milestones || []);
     setLocal(STORAGE_KEYS.TASKS, payload.tasks || []);
     setLocal(STORAGE_KEYS.LOGBOOKS, logbooks);
+    setLocal(STORAGE_KEYS.SUBTASKS, subtasks);
+    setLocal(STORAGE_KEYS.COMMENTS, comments);
 
     if (isSupabaseConfigured()) {
       try {
@@ -954,6 +1372,8 @@ export async function importAllData(
         if ((payload.milestones || []).length > 0) await supabase.from('milestones').upsert(payload.milestones);
         if ((payload.tasks || []).length > 0) await supabase.from('tasks').upsert(payload.tasks);
         if (logbooks.length > 0) await supabase.from('logbooks').upsert(logbooks);
+        if (subtasks.length > 0) await supabase.from('subtasks').upsert(subtasks);
+        if (comments.length > 0) await supabase.from('task_comments').upsert(comments);
       } catch (err) {
         console.warn('importAllData cloud sync notice:', err);
       }
@@ -999,8 +1419,19 @@ function remapCollidingIds(
   existingProjectIds: Set<string>,
   existingMilestoneIds: Set<string>,
   existingTaskIds: Set<string>,
-  existingLogIds: Set<string>
-): { project: Project; milestones: Milestone[]; tasks: Task[]; logbooks: LogbookEntry[] } {
+  existingLogIds: Set<string>,
+  subtasks: Subtask[] = [],
+  comments: TaskComment[] = [],
+  existingSubtaskIds: Set<string> = new Set(),
+  existingCommentIds: Set<string> = new Set()
+): {
+  project: Project;
+  milestones: Milestone[];
+  tasks: Task[];
+  logbooks: LogbookEntry[];
+  subtasks: Subtask[];
+  comments: TaskComment[];
+} {
   // Jika id proyek sudah dipakai proyek LAIN (judul beda), beri id baru + petakan relasinya.
   let projectId = project.id;
   const projectTakenByOther = existingProjectIds.has(projectId);
@@ -1008,6 +1439,7 @@ function remapCollidingIds(
     projectId = generateId();
   }
   const msIdMap = new Map<string, string>();
+  const taskIdMap = new Map<string, string>();
   const idTaken = (set: Set<string>, id: string) => set.has(id);
   const nextMilestones = milestones.map((m) => {
     let newId = m.id;
@@ -1015,22 +1447,40 @@ function remapCollidingIds(
     msIdMap.set(m.id, newId);
     return { ...m, id: newId, project_id: projectId };
   });
-  const nextTasks = tasks.map((t) => ({
-    ...t,
-    id: idTaken(existingTaskIds, t.id) ? generateId() : t.id,
-    project_id: projectId,
-    milestone_id: t.milestone_id ? msIdMap.get(t.milestone_id) || t.milestone_id : null,
-  }));
+  const nextTasks = tasks.map((t) => {
+    const newId = idTaken(existingTaskIds, t.id) ? generateId() : t.id;
+    taskIdMap.set(t.id, newId);
+    return {
+      ...t,
+      id: newId,
+      project_id: projectId,
+      milestone_id: t.milestone_id ? msIdMap.get(t.milestone_id) || t.milestone_id : null,
+    };
+  });
   const nextLogs = logbooks.map((l) => ({
     ...l,
     id: idTaken(existingLogIds, l.id) ? generateId() : l.id,
     project_id: projectId,
+  }));
+  const nextSubtasks = subtasks.map((s) => ({
+    ...s,
+    id: idTaken(existingSubtaskIds, s.id) ? generateId() : s.id,
+    project_id: projectId,
+    task_id: taskIdMap.get(s.task_id) || s.task_id,
+  }));
+  const nextComments = comments.map((c) => ({
+    ...c,
+    id: idTaken(existingCommentIds, c.id) ? generateId() : c.id,
+    project_id: projectId,
+    task_id: taskIdMap.get(c.task_id) || c.task_id,
   }));
   return {
     project: { ...project, id: projectId },
     milestones: nextMilestones,
     tasks: nextTasks,
     logbooks: nextLogs,
+    subtasks: nextSubtasks,
+    comments: nextComments,
   };
 }
 
@@ -1042,6 +1492,8 @@ export function normalizeProjectImport(json: unknown): {
   milestones: Milestone[];
   tasks: Task[];
   logbooks: LogbookEntry[];
+  subtasks: Subtask[];
+  comments: TaskComment[];
 } {
   const fail = (message: string) => ({
     ok: false as const,
@@ -1050,6 +1502,8 @@ export function normalizeProjectImport(json: unknown): {
     milestones: [] as Milestone[],
     tasks: [] as Task[],
     logbooks: [] as LogbookEntry[],
+    subtasks: [] as Subtask[],
+    comments: [] as TaskComment[],
   });
   if (!json || typeof json !== 'object') return fail('File JSON tidak valid.');
   const j = json as Record<string, unknown>;
@@ -1063,6 +1517,8 @@ export function normalizeProjectImport(json: unknown): {
       milestones: (j.milestones as Milestone[]) || [],
       tasks: (j.tasks as Task[]) || [],
       logbooks: (j.logbooks as LogbookEntry[]) || [],
+      subtasks: (j.subtasks as Subtask[]) || [],
+      comments: (j.comments as TaskComment[]) || [],
     };
   }
   // Format 2: satu proyek tunggal
@@ -1077,6 +1533,8 @@ export function normalizeProjectImport(json: unknown): {
       milestones: ((j.milestones as Milestone[]) || []) as Milestone[],
       tasks: ((j.tasks as Task[]) || []) as Task[],
       logbooks: ((j.logbooks as LogbookEntry[]) || []) as LogbookEntry[],
+      subtasks: ((j.subtasks as Subtask[]) || []) as Subtask[],
+      comments: ((j.comments as TaskComment[]) || []) as TaskComment[],
     };
   }
   return fail('File bukan JSON proyek Tracker Nexus (butuh {project,...} atau backup {projects:[...]}).');
@@ -1099,22 +1557,30 @@ export async function importProjectsMerge(
   const existingMilestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, []);
   const existingTasks = getLocal<Task>(STORAGE_KEYS.TASKS, []);
   const existingLogs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, []);
+  const existingSubtasks = getLocal<Subtask>(STORAGE_KEYS.SUBTASKS, []);
+  const existingComments = getLocal<TaskComment>(STORAGE_KEYS.COMMENTS, []);
 
   const projectIds = new Set(existingProjects.map((p) => p.id));
   const milestoneIds = new Set(existingMilestones.map((m) => m.id));
   const taskIds = new Set(existingTasks.map((t) => t.id));
   const logIds = new Set(existingLogs.map((l) => l.id));
+  const subtaskIds = new Set(existingSubtasks.map((s) => s.id));
+  const commentIds = new Set(existingComments.map((c) => c.id));
 
   let mergedProjects = [...existingProjects];
   let mergedMilestones = [...existingMilestones];
   let mergedTasks = [...existingTasks];
   let mergedLogs = [...existingLogs];
+  let mergedSubtasks = [...existingSubtasks];
+  let mergedComments = [...existingComments];
   const importedIds: string[] = [];
 
   for (const rawProject of norm.projects) {
     const relMs = norm.milestones.filter((m) => m.project_id === rawProject.id);
     const relTasks = norm.tasks.filter((t) => t.project_id === rawProject.id);
     const relLogs = norm.logbooks.filter((l) => l.project_id === rawProject.id);
+    const relSubs = (norm.subtasks || []).filter((s) => s.project_id === rawProject.id);
+    const relComments = (norm.comments || []).filter((c) => c.project_id === rawProject.id);
     // Proyek tanpa relasi eksplisit (format tunggal campur): sertakan semua jika hanya 1 proyek
     const useAll =
       norm.projects.length === 1 && relMs.length === 0 && relTasks.length === 0 && relLogs.length === 0;
@@ -1126,7 +1592,11 @@ export async function importProjectsMerge(
       projectIds,
       milestoneIds,
       taskIds,
-      logIds
+      logIds,
+      useAll ? norm.subtasks || [] : relSubs,
+      useAll ? norm.comments || [] : relComments,
+      subtaskIds,
+      commentIds
     );
     const now = new Date().toISOString();
     const project: Project = {
@@ -1149,11 +1619,15 @@ export async function importProjectsMerge(
     mergedMilestones = upsertById(mergedMilestones, milestones);
     mergedTasks = upsertById(mergedTasks, tasks);
     mergedLogs = upsertById(mergedLogs, logbooks);
+    mergedSubtasks = upsertById(mergedSubtasks, remapped.subtasks);
+    mergedComments = upsertById(mergedComments, remapped.comments);
 
     projectIds.add(project.id);
     milestones.forEach((m) => milestoneIds.add(m.id));
     tasks.forEach((t) => taskIds.add(t.id));
     logbooks.forEach((l) => logIds.add(l.id));
+    remapped.subtasks.forEach((s) => subtaskIds.add(s.id));
+    remapped.comments.forEach((c) => commentIds.add(c.id));
     importedIds.push(project.id);
   }
 
@@ -1161,6 +1635,8 @@ export async function importProjectsMerge(
   setLocal(STORAGE_KEYS.MILESTONES, mergedMilestones);
   setLocal(STORAGE_KEYS.TASKS, mergedTasks);
   setLocal(STORAGE_KEYS.LOGBOOKS, mergedLogs);
+  setLocal(STORAGE_KEYS.SUBTASKS, mergedSubtasks);
+  setLocal(STORAGE_KEYS.COMMENTS, mergedComments);
 
   // Sinkron cloud (best-effort, hanya data impor milik akun ini)
   if (isSupabaseConfigured()) {
@@ -1169,10 +1645,14 @@ export async function importProjectsMerge(
       const justMs = mergedMilestones.filter((m) => importedIds.includes(m.project_id));
       const justTasks = mergedTasks.filter((t) => importedIds.includes(t.project_id));
       const justLogs = mergedLogs.filter((l) => importedIds.includes(l.project_id));
+      const justSubs = mergedSubtasks.filter((s) => importedIds.includes(s.project_id));
+      const justComments = mergedComments.filter((c) => importedIds.includes(c.project_id));
       if (justProjects.length > 0) await supabase.from('projects').upsert(justProjects);
       if (justMs.length > 0) await supabase.from('milestones').upsert(justMs);
       if (justTasks.length > 0) await supabase.from('tasks').upsert(justTasks);
       if (justLogs.length > 0) await supabase.from('logbooks').upsert(justLogs);
+      if (justSubs.length > 0) await supabase.from('subtasks').upsert(justSubs);
+      if (justComments.length > 0) await supabase.from('task_comments').upsert(justComments);
     } catch (err) {
       console.warn('importProjectsMerge cloud sync notice:', err);
     }

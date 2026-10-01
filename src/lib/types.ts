@@ -15,6 +15,7 @@ export interface Project {
   tags: string[];
   created_at: string;
   updated_at: string;
+  updated_by?: string;
 }
 
 export interface Milestone {
@@ -26,7 +27,7 @@ export interface Milestone {
   created_at: string;
 }
 
-export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 export interface Task {
@@ -37,6 +38,53 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   due_date?: string;
+  created_at: string;
+  updated_at?: string;
+  created_by?: string;
+  updated_by?: string;
+}
+
+export interface Subtask {
+  id: string;
+  project_id: string;
+  task_id: string;
+  title: string;
+  is_done: boolean;
+  position: number;
+  created_at: string;
+}
+
+export interface TaskComment {
+  id: string;
+  project_id: string;
+  task_id: string;
+  author_name: string;
+  content: string;
+  created_at: string;
+}
+
+export type ActivityAction =
+  | 'task_created'
+  | 'task_status'
+  | 'task_deleted'
+  | 'bulk_update'
+  | 'subtask_done'
+  | 'comment_added'
+  | 'milestone_created'
+  | 'milestone_done'
+  | 'milestone_deleted'
+  | 'logbook_created'
+  | 'project_status';
+
+export interface ActivityLog {
+  id: string;
+  project_id: string;
+  actor_name: string;
+  action: ActivityAction;
+  entity_type: 'task' | 'milestone' | 'logbook' | 'project' | 'subtask' | 'comment';
+  entity_id?: string;
+  entity_title: string;
+  detail?: string;
   created_at: string;
 }
 
@@ -60,6 +108,9 @@ export interface ProjectDetailData extends Project {
   milestones: Milestone[];
   tasks: Task[];
   logbooks: LogbookEntry[];
+  subtasks: Subtask[];
+  comments: TaskComment[];
+  activities: ActivityLog[];
 }
 
 export interface SupabaseConfig {

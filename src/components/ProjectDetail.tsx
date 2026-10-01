@@ -1,17 +1,23 @@
 'use client';
 
 import React from 'react';
-import { ArrowLeft, CalendarDays, Copy, Ellipsis, ListChecks, NotebookPen, Pencil, Trash2 } from 'lucide-react';
+import { Activity, ArrowLeft, CalendarDays, Copy, Download, Ellipsis, ListChecks, NotebookPen, Pencil, Trash2 } from 'lucide-react';
 import type {
+  ActivityAction,
+  ActivityLog,
   LogbookEntry,
   Milestone,
   Project,
   ProjectDetailData,
   ProjectStatus,
+  Subtask,
   Task,
+  TaskComment,
+  TaskStatus,
 } from '@/lib/types';
-import { formatDate, renderDescriptionToHtml } from '@/lib/utils';
+import { formatDate, formatDateTime, renderDescriptionToHtml } from '@/lib/utils';
 import { dueLabel } from '@/lib/dashboard-utils';
+import { downloadWeeklyReport } from '@/lib/weekly-report';
 import { Card, PriorityBadge, ProgressBar, StatusBadge } from './ui';
 import { TaskManager } from './TaskManager';
 import { LogbookSection } from './LogbookSection';
@@ -29,9 +35,29 @@ interface ProjectDetailProps {
   onDeleteMilestone: (id: string) => Promise<void>;
   onSaveLogbook: (l: Partial<LogbookEntry>) => Promise<void>;
   onDeleteLogbook: (id: string) => Promise<void>;
+  onSaveSubtask: (s: Partial<Subtask> & { task_id: string; project_id: string }) => Promise<void>;
+  onDeleteSubtask: (id: string) => Promise<void>;
+  onSaveComment: (taskId: string, content: string) => Promise<void>;
+  onDeleteComment: (id: string) => Promise<void>;
+  onBulkStatus: (ids: string[], status: TaskStatus) => Promise<void>;
+  onBulkDelete: (ids: string[]) => Promise<void>;
 }
 
-type Tab = 'tasks' | 'logbook' | 'overview';
+type Tab = 'tasks' | 'logbook' | 'activity' | 'overview';
+
+const ACTIVITY_TEXT: Record<ActivityAction, string> = {
+  task_created: 'membuat tugas',
+  task_status: 'mengubah status tugas',
+  task_deleted: 'menghapus tugas',
+  bulk_update: 'mengubah banyak tugas',
+  subtask_done: 'menyelesaikan subtask',
+  comment_added: 'berkomentar pada',
+  milestone_created: 'membuat milestone',
+  milestone_done: 'menyelesaikan milestone',
+  milestone_deleted: 'menghapus milestone',
+  logbook_created: 'menulis logbook',
+  project_status: 'mengubah status proyek',
+};
 
 export function ProjectDetail({
   projectData,
@@ -46,6 +72,12 @@ export function ProjectDetail({
   onDeleteMilestone,
   onSaveLogbook,
   onDeleteLogbook,
+  onSaveSubtask,
+  onDeleteSubtask,
+  onSaveComment,
+  onDeleteComment,
+  onBulkStatus,
+  onBulkDelete,
 }: ProjectDetailProps) {
   const [tab, setTab] = React.useState<Tab>('tasks');
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -74,6 +106,7 @@ export function ProjectDetail({
   const tabs: { key: Tab; label: string; count?: number; icon: React.ReactNode }[] = [
     { key: 'tasks', label: 'Tugas', count: projectData.tasks.length, icon: <ListChecks className="h-3.5 w-3.5" aria-hidden="true" /> },
     { key: 'logbook', label: 'Logbook', count: projectData.logbooks.length, icon: <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" /> },
+    { key: 'activity', label: 'Aktivitas', count: (projectData.activities || []).length, icon: <Activity className="h-3.5 w-3.5" aria-hidden="true" /> },
     { key: 'overview', label: 'Ringkasan', icon: <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" /> },
   ];
 
@@ -178,6 +211,17 @@ export function ProjectDetail({
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] text-stone-700 hover:bg-stone-100"
                 >
                   <Copy className="h-3.5 w-3.5" aria-hidden="true" /> Duplikat
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    downloadWeeklyReport(projectData);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[12.5px] text-stone-700 hover:bg-stone-100"
+                >
+                  <Download className="h-3.5 w-3.5" aria-hidden="true" /> Laporan mingguan
                 </button>
                 <button
                   type="button"
@@ -306,10 +350,18 @@ export function ProjectDetail({
           projectId={projectData.id}
           tasks={projectData.tasks}
           milestones={projectData.milestones}
+          subtasks={projectData.subtasks || []}
+          comments={projectData.comments || []}
           onSaveTask={onSaveTask}
           onDeleteTask={onDeleteTask}
           onSaveMilestone={onSaveMilestone}
           onDeleteMilestone={onDeleteMilestone}
+          onSaveSubtask={onSaveSubtask}
+          onDeleteSubtask={onDeleteSubtask}
+          onSaveComment={onSaveComment}
+          onDeleteComment={onDeleteComment}
+          onBulkStatus={onBulkStatus}
+          onBulkDelete={onBulkDelete}
         />
       ) : null}
 
@@ -323,8 +375,28 @@ export function ProjectDetail({
         />
       ) : null}
 
+      {tab === 'activity' ? (
+        <ActivityFeed activities={projectData.activities || []} />
+      ) : null}
+
       {tab === 'overview' ? (
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="space-y-3">
+          <Card className="flex flex-wrap items-center gap-2.5 p-4">
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[13px] font-bold text-stone-900">Laporan mingguan</h3>
+              <p className="mt-0.5 text-[12px] text-stone-500">
+                Rekap 7 hari terakhir (selesai, review, terlambat, kendala, kontribusi) dalam file Markdown siap kirim.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => downloadWeeklyReport(projectData)}
+              className="btn-primary shrink-0 px-4 py-2 text-[12.5px]"
+            >
+              <Download className="h-4 w-4" aria-hidden="true" /> Unduh laporan
+            </button>
+          </Card>
+          <div className="grid gap-3 md:grid-cols-3">
           <Card className="p-4">
             <h3 className="text-[13px] font-bold text-stone-900">Tag & teknologi</h3>
             {projectData.tags?.length ? (
@@ -362,8 +434,47 @@ export function ProjectDetail({
               Progres dihitung otomatis dari tugas yang selesai. Centang tugas untuk memperbarui angka.
             </p>
           </Card>
+          </div>
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ActivityFeed({ activities }: { activities: ActivityLog[] }) {
+  if (activities.length === 0) {
+    return (
+      <Card className="p-8 text-center">
+        <Activity className="mx-auto h-6 w-6 text-stone-300" aria-hidden="true" />
+        <p className="mt-2 text-[13px] font-bold text-stone-900">Belum ada aktivitas</p>
+        <p className="mx-auto mt-1 max-w-sm text-[12px] text-stone-500">
+          Setiap perubahan tugas, milestone, dan logbook tercatat di sini beserta siapa pelakunya.
+        </p>
+      </Card>
+    );
+  }
+  return (
+    <Card className="p-3.5 sm:p-4">
+      <ul className="relative space-y-0.5 before:absolute before:bottom-3 before:left-[17px] before:top-3 before:w-px before:bg-stone-200">
+        {activities.map((a) => (
+          <li key={a.id} className="relative flex gap-2.5 py-1.5 pl-0">
+            <span className="relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700" aria-hidden="true">
+              {a.actor_name.charAt(0).toUpperCase() || '?'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] leading-snug text-stone-700">
+                <strong className="font-semibold text-stone-900">{a.actor_name}</strong>{' '}
+                {ACTIVITY_TEXT[a.action] || a.action}{' '}
+                <strong className="font-semibold text-stone-900">“{a.entity_title}”</strong>
+                {a.detail ? <span className="mono text-stone-500"> ({a.detail})</span> : null}
+              </p>
+              <time className="text-[10.5px] text-stone-400" dateTime={a.created_at}>
+                {formatDateTime(a.created_at)}
+              </time>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
