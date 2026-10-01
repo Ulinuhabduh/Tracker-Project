@@ -50,9 +50,9 @@ export const StatsCards = React.memo(function StatsCards({ projects, streak }: S
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {cards.map((c) => (
-        <div key={c.label} className="card p-4">
+        <div key={c.label} className="card card-hover p-4">
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-[12px] font-medium text-stone-500">{c.label}</span>
             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${c.tint}`}>

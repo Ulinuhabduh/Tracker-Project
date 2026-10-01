@@ -140,23 +140,23 @@ export function TaskManager({
   ];
 
   return (
-    <div className="space-y-3">
-      {/* Milestones */}
-      <Card className="p-4 sm:p-5">
+    <div className="grid items-start gap-3 xl:grid-cols-[264px_minmax(0,1fr)]">
+      {/* Milestones — panel samping di desktop, atas di mobile */}
+      <Card className="p-3.5 xl:sticky xl:top-[132px]">
         <div className="flex items-center justify-between gap-2">
-          <SectionHead title={`Milestone (${milestones.length})`} desc="Tahapan besar proyek" />
+          <SectionHead title={`Milestone (${milestones.length})`} desc="Tahapan besar" />
           {!addingMs ? (
             <button
               type="button"
               onClick={() => setAddingMs(true)}
-              className="inline-flex shrink-0 items-center gap-1 text-[12.5px] font-semibold text-violet-700 hover:text-violet-800"
+              className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-semibold text-violet-700 hover:bg-violet-50"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Tambah
             </button>
           ) : null}
         </div>
         {addingMs ? (
-          <form onSubmit={createMs} className="mt-3 space-y-2 rounded-xl border border-stone-200 bg-stone-50 p-3">
+          <form onSubmit={createMs} className="mt-2 space-y-2 rounded-xl border border-stone-200 bg-stone-50 p-2.5">
             <label htmlFor="nama-milestone" className="sr-only">
               Nama milestone
             </label>
@@ -164,12 +164,12 @@ export function TaskManager({
               id="nama-milestone"
               autoComplete="off"
               required
-              placeholder="Nama milestone, mis: Beta launch…"
+              placeholder="Nama milestone…"
               value={msTitle}
               onChange={(e) => setMsTitle(e.target.value)}
-              className="field px-3 py-2 text-[13px]"
+              className="field px-2.5 py-2 text-[12.5px]"
             />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <label htmlFor="tgl-milestone" className="sr-only">
                 Tanggal milestone
               </label>
@@ -178,29 +178,28 @@ export function TaskManager({
                 type="date"
                 value={msDue}
                 onChange={(e) => setMsDue(e.target.value)}
-                className="field w-auto px-2.5 py-1.5 text-[12px]"
+                className="field w-auto min-w-0 flex-1 px-2 py-1.5 text-[11.5px]"
               />
-              <span className="flex-1" />
-              <button type="button" onClick={() => setAddingMs(false)} className="btn-secondary px-3 py-1.5 text-[12px]">
+              <button type="button" onClick={() => setAddingMs(false)} className="btn-secondary shrink-0 px-2.5 py-1.5 text-[11.5px]">
                 Batal
               </button>
-              <button type="submit" className="btn-primary px-3.5 py-1.5 text-[12px]">
+              <button type="submit" className="btn-primary shrink-0 px-3 py-1.5 text-[11.5px]">
                 Simpan
               </button>
             </div>
           </form>
         ) : null}
         {milestones.length === 0 && !addingMs ? (
-          <p className="mt-2 text-[12.5px] text-stone-500">
-            Belum ada milestone. Pecah proyek jadi fase agar mudah dilacak.
+          <p className="mt-2 text-[12px] text-stone-500">
+            Belum ada milestone.
           </p>
         ) : null}
         {milestones.length > 0 ? (
-          <ul className="mt-3 flex flex-wrap gap-1.5">
+          <ul className="mt-2 flex flex-wrap gap-1.5 xl:flex-col">
             {milestones.map((m) => (
               <li
                 key={m.id}
-                className={`inline-flex items-center gap-1.5 rounded-full border py-1 pl-1.5 pr-1 text-[12px] ${
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border py-1 pl-1.5 pr-1 text-[12px] xl:w-full ${
                   m.is_completed
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                     : 'border-stone-200 bg-white text-stone-700'
@@ -221,7 +220,7 @@ export function TaskManager({
                     <Circle className="h-4 w-4 text-stone-300" aria-hidden="true" />
                   )}
                 </button>
-                <span className={`max-w-[180px] truncate font-medium ${m.is_completed ? 'line-through opacity-70' : ''}`}>
+                <span className={`min-w-0 flex-1 truncate font-medium ${m.is_completed ? 'line-through opacity-70' : ''}`}>
                   {m.title}
                 </span>
                 {m.due_date ? (
@@ -242,7 +241,7 @@ export function TaskManager({
       </Card>
 
       {/* Tasks */}
-      <Card className="p-4 sm:p-5">
+      <Card className="min-w-0 p-3.5 sm:p-4">
         <div className="flex items-center justify-between gap-2">
           <SectionHead title={`Tugas (${tasks.length})`} desc={`${doneCount} selesai • ${progress}%`} />
           <div className="flex shrink-0 items-center gap-1.5">
@@ -269,17 +268,17 @@ export function TaskManager({
               </button>
             </div>
             {!adding ? (
-              <button type="button" onClick={() => setAdding(true)} className="btn-primary px-3 py-2 text-[12.5px]">
+              <button type="button" onClick={() => setAdding(true)} className="btn-primary px-3 py-2 text-[12px]">
                 <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" /> Tugas
               </button>
             ) : null}
           </div>
         </div>
 
-        <ProgressBar value={progress} className="mt-3" />
+        <ProgressBar value={progress} className="mt-2.5" />
 
         {adding ? (
-          <form onSubmit={create} className="mt-3 space-y-2.5 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3.5">
+          <form onSubmit={create} className="mt-2.5 space-y-2 rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
             <label htmlFor="nama-tugas" className="sr-only">
               Nama tugas
             </label>
@@ -290,9 +289,9 @@ export function TaskManager({
               placeholder="Apa yang perlu diselesaikan?"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="field px-3.5 py-2.5 text-[13px]"
+              className="field px-3 py-2 text-[13px]"
             />
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <div>
                 <label htmlFor="prioritas-tugas" className="field-label">
                   Prioritas
@@ -301,7 +300,7 @@ export function TaskManager({
                   id="prioritas-tugas"
                   value={priority}
                   onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                  className="field px-3 py-2 text-[12.5px]"
+                  className="field px-2.5 py-2 text-[12px]"
                 >
                   <option value="low">Rendah</option>
                   <option value="medium">Sedang</option>
@@ -316,7 +315,7 @@ export function TaskManager({
                   id="milestone-tugas"
                   value={milestoneId}
                   onChange={(e) => setMilestoneId(e.target.value)}
-                  className="field px-3 py-2 text-[12.5px]"
+                  className="field px-2.5 py-2 text-[12px]"
                 >
                   <option value="">Tanpa milestone</option>
                   {milestones.map((m) => (
@@ -326,7 +325,7 @@ export function TaskManager({
                   ))}
                 </select>
               </div>
-              <div>
+              <div className="col-span-2 sm:col-span-1">
                 <label htmlFor="tgl-tugas" className="field-label">
                   Deadline
                 </label>
@@ -335,23 +334,23 @@ export function TaskManager({
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
-                  className="field px-3 py-2 text-[12.5px]"
+                  className="field px-2.5 py-2 text-[12px]"
                 />
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setAdding(false)} className="btn-secondary px-3.5 py-2 text-[12.5px]">
+              <button type="button" onClick={() => setAdding(false)} className="btn-secondary px-3 py-1.5 text-[12px]">
                 Batal
               </button>
-              <button type="submit" className="btn-primary px-4 py-2 text-[12.5px]">
+              <button type="submit" className="btn-primary px-4 py-1.5 text-[12px]">
                 Tambah tugas
               </button>
             </div>
           </form>
         ) : null}
 
-        {/* Filters */}
-        <div className="scrollbar-none mt-3 flex items-center gap-1 overflow-x-auto border-y border-stone-100 py-2" role="tablist" aria-label="Filter tugas">
+        {/* Filters — satu bar padat */}
+        <div className="scrollbar-none mt-2.5 flex items-center gap-1 overflow-x-auto border-y border-stone-100 py-1.5" role="tablist" aria-label="Filter tugas">
           {[
             { key: 'all', label: `Semua (${tasks.length})` },
             { key: 'todo', label: 'To Do' },
@@ -364,7 +363,7 @@ export function TaskManager({
               role="tab"
               aria-selected={filter === f.key}
               onClick={() => setFilter(f.key)}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] transition-colors ${
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[11.5px] transition-colors ${
                 filter === f.key ? 'bg-stone-900 font-semibold text-white' : 'text-stone-500 hover:bg-stone-100 hover:text-stone-900'
               }`}
             >
@@ -380,7 +379,7 @@ export function TaskManager({
                 id="filter-ms"
                 value={msFilter}
                 onChange={(e) => setMsFilter(e.target.value)}
-                className="field ml-auto w-auto shrink-0 px-2 py-1.5 text-[11.5px]"
+                className="field ml-auto w-auto shrink-0 px-2 py-1 text-[11px]"
               >
                 <option value="all">Semua milestone</option>
                 <option value="none">Tanpa milestone</option>
@@ -395,20 +394,25 @@ export function TaskManager({
         </div>
 
         {filtered.length === 0 ? (
-          <p className="py-8 text-center text-[12.5px] text-stone-500">
+          <p className="py-6 text-center text-[12px] text-stone-500">
             {tasks.length === 0 ? 'Belum ada tugas. Tambahkan tugas pertama di atas.' : 'Tidak ada tugas yang cocok dengan filter.'}
           </p>
         ) : mode === 'list' ? (
-          <ul className="divide-y divide-stone-100">
+          <ul className="mt-2.5 grid items-start gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {filtered.map((t) => {
               const ms = milestoneName(t.milestone_id);
               const done = t.status === 'done';
               return (
-                <li key={t.id} className="group flex items-start gap-3 py-3">
+                <li
+                  key={t.id}
+                  className={`group flex items-center gap-2.5 rounded-xl border border-stone-200/80 bg-white px-2.5 py-2 transition-colors hover:border-stone-300 ${
+                    done ? 'bg-stone-50/60' : ''
+                  }`}
+                >
                   <button
                     type="button"
                     onClick={() => toggle(t)}
-                    className="mt-0.5 shrink-0 rounded-full transition-transform active:scale-90"
+                    className="shrink-0 rounded-full transition-transform active:scale-90"
                     aria-label={done ? `Tandai belum selesai: ${t.title}` : `Tandai selesai: ${t.title}`}
                     aria-pressed={done}
                   >
@@ -423,27 +427,28 @@ export function TaskManager({
                     )}
                   </button>
                   <div className="min-w-0 flex-1">
-                    <p className={`text-[13.5px] leading-snug ${done ? 'text-stone-400 line-through' : 'font-medium text-stone-800'}`}>
+                    <p className={`truncate text-[13px] leading-snug ${done ? 'text-stone-400 line-through' : 'font-medium text-stone-800'}`}>
                       {t.title}
                     </p>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-stone-500">
-                      <span className="font-semibold uppercase tracking-wide text-[10px]">
+                    <p className="mt-0.5 flex items-center gap-x-1.5 gap-y-0 truncate text-[11px] text-stone-500">
+                      <span className="shrink-0 font-semibold uppercase tracking-wide text-[9.5px]">
                         {STATUS_LABEL[t.status]}
                       </span>
                       <span aria-hidden="true">•</span>
-                      <span className="capitalize">{t.priority}</span>
+                      <span className="shrink-0 capitalize">{t.priority}</span>
                       {ms ? (
                         <>
                           <span aria-hidden="true">•</span>
-                          <span className="inline-flex max-w-[160px] items-center gap-1 truncate text-violet-700">
-                            <Flag className="h-2.5 w-2.5 shrink-0" aria-hidden="true" /> {ms}
+                          <span className="inline-flex min-w-0 items-center gap-1 truncate text-violet-700">
+                            <Flag className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+                            <span className="truncate">{ms}</span>
                           </span>
                         </>
                       ) : null}
                       {t.due_date ? (
                         <>
                           <span aria-hidden="true">•</span>
-                          <span className="font-medium">{dueLabel(t.due_date)}</span>
+                          <span className="shrink-0 font-medium">{dueLabel(t.due_date)}</span>
                         </>
                       ) : null}
                     </p>
@@ -461,31 +466,31 @@ export function TaskManager({
             })}
           </ul>
         ) : (
-          <div className="scrollbar-none -mx-1 mt-3 flex gap-2.5 overflow-x-auto px-1 pb-1">
+          <div className="scrollbar-none -mx-1 mt-2.5 flex gap-2 overflow-x-auto px-1 pb-1">
             {boardCols.map((col) => {
               const items = filtered.filter((t) => t.status === col.key);
               return (
                 <section
                   key={col.key}
                   aria-label={`Kolom ${STATUS_LABEL[col.key]}`}
-                  className="w-60 shrink-0 rounded-xl border border-stone-200 bg-stone-50 p-2 sm:w-64"
+                  className="w-56 shrink-0 rounded-xl border border-stone-200 bg-stone-50 p-1.5"
                 >
-                  <header className="flex items-center gap-2 px-1.5 py-1.5">
-                    <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${col.tint}`}>
+                  <header className="flex items-center gap-1.5 px-1 py-1">
+                    <span className={`rounded-md px-1.5 py-0.5 text-[10.5px] font-bold ${col.tint}`}>
                       {STATUS_LABEL[col.key]}
                     </span>
-                    <span className="tnum text-[11px] text-stone-400">{items.length}</span>
+                    <span className="tnum text-[10.5px] text-stone-400">{items.length}</span>
                   </header>
                   <ul className="space-y-1.5">
                     {items.map((t) => (
-                      <li key={t.id} className="rounded-[10px] border border-stone-200 bg-white p-2.5 shadow-sm">
-                        <p className={`text-[12.5px] leading-snug ${t.status === 'done' ? 'text-stone-400 line-through' : 'font-medium text-stone-800'}`}>
+                      <li key={t.id} className="rounded-[10px] border border-stone-200 bg-white p-2 shadow-sm">
+                        <p className={`text-[12px] leading-snug ${t.status === 'done' ? 'text-stone-400 line-through' : 'font-medium text-stone-800'}`}>
                           {t.title}
                         </p>
                         {t.due_date ? (
-                          <p className="mono mt-1 text-[10.5px] text-stone-500">{dueLabel(t.due_date)}</p>
+                          <p className="mono mt-0.5 text-[10px] text-stone-500">{dueLabel(t.due_date)}</p>
                         ) : null}
-                        <div className="mt-2 flex items-center justify-between">
+                        <div className="mt-1.5 flex items-center justify-between">
                           <div className="flex items-center gap-0.5">
                             <button
                               type="button"
@@ -530,7 +535,7 @@ export function TaskManager({
                       </li>
                     ))}
                     {items.length === 0 ? (
-                      <li className="rounded-[10px] border border-dashed border-stone-200 px-3 py-5 text-center text-[11.5px] text-stone-400">
+                      <li className="rounded-[10px] border border-dashed border-stone-200 px-3 py-4 text-center text-[11px] text-stone-400">
                         Kosong
                       </li>
                     ) : null}

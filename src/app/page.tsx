@@ -27,8 +27,7 @@ import {
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { clearUserEmail, getUserEmail, setUserEmail } from '@/lib/user-session';
 import { groupProjectsByDeadline, groupTasksForToday } from '@/lib/dashboard-utils';
-import { Sidebar } from '@/components/Sidebar';
-import { MobileNewButton, Topbar } from '@/components/Topbar';
+import { Topbar } from '@/components/Topbar';
 import { BottomNav } from '@/components/BottomNav';
 import { CommandPalette } from '@/components/CommandPalette';
 import { ProjectDetail } from '@/components/ProjectDetail';
@@ -367,31 +366,26 @@ export default function Home() {
   };
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar
-        view={view}
-        onNavigate={goView}
-        projects={projects}
-        activeProjectId={selectedId}
-        onOpenProject={openProject}
-        todayCount={todayCount}
-        deadlineCount={deadlineCount}
-        userEmail={userEmail}
-        cloudActive={isSupabaseConfigured()}
-        onOpenAuth={() => setAuthOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onNewProject={newProject}
-      />
+    <div className="relative flex min-h-screen flex-col">
+      {/* Latar dekoratif */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute -top-32 left-1/2 h-72 w-[42rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-indigo-200/50 via-violet-200/40 to-sky-200/50 blur-3xl" />
+        <div className="absolute right-[-6rem] top-64 hidden h-64 w-64 rounded-full bg-amber-100/50 blur-3xl lg:block" />
+      </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative pt-3">
         <Topbar
           onOpenPalette={() => setPaletteOpen(true)}
           onNewProject={newProject}
+          onOpenSettings={() => setSettingsOpen(true)}
           userEmail={userEmail}
+          cloudActive={isSupabaseConfigured()}
           onOpenAuth={() => setAuthOpen(true)}
         />
+      </div>
 
-        <main id="konten" className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-5 sm:px-6 sm:pt-7 lg:pb-12">
+      <div className="relative mx-auto w-full max-w-[1400px] flex-1 px-4 sm:px-6">
+        <main id="konten" className="pb-40 pt-5 sm:pt-7">
           {loading ? (
             <div className="space-y-3" aria-label="Memuat…">
               <div className="skeleton h-8 w-56" />
@@ -480,19 +474,26 @@ export default function Home() {
             />
           )}
 
-          <footer className="flex flex-col items-center justify-between gap-1 pb-2 pt-10 text-[11px] text-stone-400 sm:flex-row">
-            <p>
-              <span translate="no">Tracker Nexus</span> — kerja fokus, rapi tercatat.
+          <footer className="flex flex-col items-center justify-between gap-1.5 pb-2 pt-10 text-[11px] text-stone-400 sm:flex-row">
+            <p className="inline-flex items-center gap-1.5 rounded-full border border-stone-200/70 bg-white/70 px-3 py-1 backdrop-blur">
+              <span translate="no" className="font-semibold text-stone-600">Tracker Nexus</span>
+              <span aria-hidden="true">•</span> kerja fokus, rapi tercatat
             </p>
-            <p className="mono">
+            <p className="mono rounded-full border border-stone-200/70 bg-white/70 px-3 py-1 backdrop-blur">
               {isSupabaseConfigured() ? 'cloud sync aktif' : 'mode lokal'} • {new Date().getFullYear()}
             </p>
           </footer>
         </main>
       </div>
 
-      <BottomNav view={view} onNavigate={goView} todayCount={todayCount} deadlineCount={deadlineCount} />
-      {!selectedId && userEmail ? <MobileNewButton onClick={newProject} /> : null}
+      <BottomNav
+        view={view}
+        onNavigate={goView}
+        onNewProject={newProject}
+        todayCount={todayCount}
+        deadlineCount={deadlineCount}
+        projectOpen={!!selectedId}
+      />
 
       <CommandPalette
         open={paletteOpen}

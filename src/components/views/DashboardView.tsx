@@ -111,23 +111,56 @@ export function DashboardView({
 
   return (
     <div className="animate-fade-up space-y-5">
-      {/* Greeting */}
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-600">
-          {todayLabel()}
-        </p>
-        <h1 className="mt-1 text-balance text-[22px] font-bold tracking-tight text-stone-900 sm:text-[26px]">
-          {greeting()}
-          {firstName ? `, ${firstName}` : ''} — ini fokus Anda hari ini.
-        </h1>
-      </div>
+      {/* Hero */}
+      <section className="relative overflow-hidden rounded-3xl border border-indigo-200/50 bg-gradient-to-br from-indigo-600 via-indigo-600 to-violet-700 p-5 text-white shadow-[0_20px_50px_-20px_rgb(79_70_229/0.5)] sm:p-7">
+        <div
+          className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-white/15 blur-2xl"
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none absolute -bottom-28 right-32 h-56 w-56 rounded-full bg-violet-300/30 blur-2xl"
+          aria-hidden="true"
+        />
+        <div className="relative">
+          <p className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-indigo-100 backdrop-blur">
+            {todayLabel()}
+            {streak > 0 ? <span aria-hidden="true">•</span> : null}
+            {streak > 0 ? <span>{streak} hari beruntun</span> : null}
+          </p>
+          <h1 className="mt-2.5 max-w-2xl text-balance text-[22px] font-bold leading-tight tracking-tight sm:text-[28px]">
+            {greeting()}
+            {firstName ? `, ${firstName}` : ''} — ini fokus Anda hari ini.
+          </h1>
+          <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-indigo-100">
+            {projects.length === 0
+              ? 'Mulai dari satu proyek, pecah jadi tugas kecil, dan catat progres harian.'
+              : `${projects.filter((p) => p.status === 'in_progress').length} berjalan • ${attention.length > 0 ? `${attention.length} perlu perhatian` : 'semua sesuai jadwal'} • ${recentLogs.length} catatan tersimpan`}
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onNewProject}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-[13px] font-bold text-indigo-700 shadow-sm transition-all hover:bg-indigo-50 active:scale-95"
+            >
+              <FolderPlus className="h-4 w-4" aria-hidden="true" /> Buat proyek
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('today')}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-[13px] font-semibold text-white backdrop-blur transition-colors hover:bg-white/20"
+            >
+              Fokus hari ini <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      </section>
 
       <StatsCards projects={projects} streak={streak} />
 
       <div className="grid items-start gap-4 xl:grid-cols-3">
         {/* Projects */}
         <div className="space-y-3 xl:col-span-2">
-          <Card className="p-3">
+          <Card className="p-3 shadow-[0_2px_16px_-8px_rgb(28_25_23/0.12)]">
             <div className="flex flex-col gap-2 md:flex-row">
               <div className="relative flex-1">
                 <Search
@@ -293,7 +326,7 @@ export function DashboardView({
         </div>
 
         {/* Right rail */}
-        <div className="space-y-3">
+        <div className="space-y-3 xl:sticky xl:top-24">
           <Card className={`p-4 ${attention.length > 0 ? 'border-rose-200' : ''}`}>
             <SectionHead
               title="Perlu perhatian"

@@ -92,22 +92,23 @@ export function LogbookSection({ projectId, project, logbooks, onSaveLogbook, on
     (q ? ` • Cari “${query.trim()}”` : '');
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <SectionHead title={`Logbook (${logbooks.length})`} desc="Progres, kendala & rilis tercatat rapi" />
+    <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_264px]">
+      <div className="min-w-0 space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <SectionHead title={`Logbook (${logbooks.length})`} desc="Progres, kendala & rilis" />
         {!editorOpen ? (
           <span className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={() => setPrinting(true)}
               disabled={list.length === 0}
-              className="btn-secondary px-3 py-2 text-[12.5px] disabled:opacity-45"
+              className="btn-secondary px-2.5 py-1.5 text-[12px] disabled:opacity-45"
               title="Unduh logbook sebagai PDF (A4 landscape)"
             >
-              <Download className="h-4 w-4" aria-hidden="true" /> PDF
+              <Download className="h-3.5 w-3.5" aria-hidden="true" /> PDF
             </button>
-            <button type="button" onClick={() => setCreating(true)} className="btn-primary px-3.5 py-2 text-[12.5px]">
-              <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" /> Tulis log
+            <button type="button" onClick={() => setCreating(true)} className="btn-primary px-3 py-1.5 text-[12px]">
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" /> Tulis log
             </button>
           </span>
         ) : null}
@@ -125,10 +126,10 @@ export function LogbookSection({ projectId, project, logbooks, onSaveLogbook, on
         />
       ) : null}
 
-      <Card className="space-y-2.5 p-3">
-        <div className="relative">
+      <Card className="flex items-center gap-2 p-2">
+        <div className="relative min-w-0 flex-1">
           <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-400"
+            className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-400"
             aria-hidden="true"
           />
           <label htmlFor="cari-log" className="sr-only">
@@ -141,20 +142,20 @@ export function LogbookSection({ projectId, project, logbooks, onSaveLogbook, on
             placeholder="Cari catatan…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="field py-2 pl-9 pr-8 text-[12.5px]"
+            className="field py-1.5 pl-8 pr-7 text-[12px]"
           />
           {query ? (
             <button
               type="button"
               onClick={() => setQuery('')}
-              className="icon-btn absolute right-1.5 top-1/2 -translate-y-1/2 p-1"
+              className="icon-btn absolute right-1 top-1/2 -translate-y-1/2 p-1"
               aria-label="Hapus pencarian logbook"
             >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
+              <X className="h-3 w-3" aria-hidden="true" />
             </button>
           ) : null}
         </div>
-        <div className="scrollbar-none flex items-center gap-1 overflow-x-auto" role="tablist" aria-label="Filter tipe log">
+        <div className="scrollbar-none flex shrink-0 items-center gap-1 overflow-x-auto" role="tablist" aria-label="Filter tipe log">
           {FILTERS.map((f) => (
             <button
               key={f.key}
@@ -162,7 +163,7 @@ export function LogbookSection({ projectId, project, logbooks, onSaveLogbook, on
               role="tab"
               aria-selected={filter === f.key}
               onClick={() => setFilter(f.key)}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-[12px] transition-colors ${
+              className={`shrink-0 rounded-full px-2.5 py-1 text-[11.5px] transition-colors ${
                 filter === f.key
                   ? 'bg-stone-900 font-semibold text-white'
                   : 'text-stone-500 hover:bg-stone-100 hover:text-stone-900'
@@ -188,7 +189,7 @@ export function LogbookSection({ projectId, project, logbooks, onSaveLogbook, on
           }
         />
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-2">
           {list.map((log) => {
             const expanded = !!open[log.id];
             const meta = getLogTypeMeta(log.log_type);
@@ -197,8 +198,8 @@ export function LogbookSection({ projectId, project, logbooks, onSaveLogbook, on
                 key={log.id}
                 className={`card overflow-hidden ${log.log_type === 'blocker' ? 'border-rose-200' : ''}`}
               >
-                <div className="flex items-center gap-3 px-4 py-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-stone-50">
+                <div className="flex items-center gap-2.5 px-3 py-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-stone-50">
                     <LogIcon type={log.log_type} />
                   </span>
                   <button
@@ -208,15 +209,15 @@ export function LogbookSection({ projectId, project, logbooks, onSaveLogbook, on
                     aria-expanded={expanded}
                     aria-label={`${expanded ? 'Tutup' : 'Buka'} catatan ${log.title}`}
                   >
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${meta.bg} ${meta.text}`}>
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${meta.bg} ${meta.text}`}>
                         {meta.label}
                       </span>
-                      <time className="text-[11px] text-stone-400" dateTime={log.created_at}>
+                      <time className="text-[10.5px] text-stone-400" dateTime={log.created_at}>
                         {formatDateTime(log.created_at)}
                       </time>
                     </span>
-                    <span className="mt-0.5 block truncate text-[13.5px] font-semibold text-stone-900">
+                    <span className="mt-0.5 block truncate text-[13px] font-semibold text-stone-900">
                       {log.title}
                     </span>
                   </button>
@@ -256,9 +257,9 @@ export function LogbookSection({ projectId, project, logbooks, onSaveLogbook, on
                   </span>
                 </div>
                 {expanded ? (
-                  <div className="animate-fade-up border-t border-stone-100 bg-stone-50/60 px-4 py-4 sm:px-5">
+                  <div className="animate-fade-up border-t border-stone-100 bg-stone-50/60 px-3.5 py-3">
                     {log.blockers ? (
-                      <p className="mb-3 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-[12.5px] leading-relaxed text-rose-900">
+                      <p className="mb-2.5 flex gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] leading-relaxed text-rose-900">
                         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden="true" />
                         <span>
                           <strong className="font-semibold">Kendala:</strong> {log.blockers}
@@ -266,11 +267,11 @@ export function LogbookSection({ projectId, project, logbooks, onSaveLogbook, on
                       </p>
                     ) : null}
                     <div
-                      className="prose-live max-w-none text-[13px] leading-relaxed text-stone-600"
+                      className="prose-live max-w-none text-[12.5px] leading-relaxed text-stone-600"
                       dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(log.content_markdown) }}
                     />
                     {log.tags?.length ? (
-                      <div className="mt-3 flex flex-wrap gap-1.5 border-t border-stone-200/70 pt-3">
+                      <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-stone-200/70 pt-2.5">
                         {log.tags.map((t) => (
                           <span key={t} className="chip mono">
                             #{t}
@@ -285,6 +286,26 @@ export function LogbookSection({ projectId, project, logbooks, onSaveLogbook, on
           })}
         </div>
       )}
+      </div>
+
+      {/* Ringkasan samping — hemat scroll vertikal */}
+      <Card className="hidden p-3.5 xl:block xl:sticky xl:top-[132px]">
+        <h3 className="text-[12.5px] font-bold text-stone-900">Ringkasan log</h3>
+        <dl className="mt-2.5 space-y-1.5 text-[12px]">
+          {FILTERS.filter((f) => f.key !== 'all').map((f) => {
+            const n = logbooks.filter((l) => l.log_type === f.key).length;
+            return (
+              <div key={f.key} className="flex items-center justify-between rounded-lg bg-stone-50 px-2.5 py-1.5">
+                <dt className="text-stone-500">{f.label}</dt>
+                <dd className="tnum font-bold text-stone-800">{n}</dd>
+              </div>
+            );
+          })}
+        </dl>
+        <p className="mt-2.5 text-[11px] leading-relaxed text-stone-400">
+          Total {logbooks.length} entri • {filterLabel}
+        </p>
+      </Card>
 
       {printing ? (
         <LogbookPrintPreview
