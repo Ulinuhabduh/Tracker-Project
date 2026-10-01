@@ -153,54 +153,107 @@ export async function saveProject(projectData: Partial<Project>): Promise<Projec
   const isNew = !projectData.id;
   const now = new Date().toISOString();
   const id = projectData.id || generateId();
-  const userEmail = projectData.user_email || loginEmail;
+
+  if (isNew) {
+    const userEmail = projectData.user_email || loginEmail;
+    const projectRecord: Project = {
+      id,
+      user_email: userEmail,
+      title: projectData.title?.trim() || 'Untitled Project',
+      description: projectData.description?.trim() || '',
+      category: projectData.category?.trim() || 'General',
+      status: projectData.status || 'planning',
+      priority: projectData.priority || 'medium',
+      progress_percent: projectData.progress_percent ?? 0,
+      start_date: projectData.start_date || now.split('T')[0],
+      due_date: projectData.due_date || now.split('T')[0],
+      tags: projectData.tags || [],
+      created_at: projectData.created_at || now,
+      updated_at: now,
+    };
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase.from('projects').insert(projectRecord).select().single();
+        if (!error && data) return data as Project;
+        if (error) console.error('Supabase saveProject insert error:', error.message);
+      } catch (err) {
+        console.error('Supabase saveProject exception:', err);
+      }
+    }
+
+    const list = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
+    setLocal(STORAGE_KEYS.PROJECTS, [projectRecord, ...list]);
+    return projectRecord;
+  }
+
+  // ---- update parsial: field yang tidak dikirim dipertahankan ----
+  const list = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
+  let existing = list.find((p) => p.id === id);
+  if (!existing && isSupabaseConfigured()) {
+    try {
+      const { data } = await supabase.from('projects').select('*').eq('id', id).single();
+      if (data) existing = data as Project;
+    } catch {
+      /* abaikan */
+    }
+  }
+  const base: Project = existing ?? {
+    id,
+    user_email: projectData.user_email || loginEmail,
+    title: 'Untitled Project',
+    description: '',
+    category: 'General',
+    status: 'planning',
+    priority: 'medium',
+    progress_percent: 0,
+    start_date: now.split('T')[0],
+    due_date: now.split('T')[0],
+    tags: [],
+    created_at: now,
+    updated_at: now,
+  };
 
   const projectRecord: Project = {
+    ...base,
     id,
-    user_email: userEmail,
-    title: projectData.title?.trim() || 'Untitled Project',
-    description: projectData.description?.trim() || '',
-    category: projectData.category?.trim() || 'General',
-    status: projectData.status || 'planning',
-    priority: projectData.priority || 'medium',
-    progress_percent: projectData.progress_percent ?? 0,
-    start_date: projectData.start_date || now.split('T')[0],
-    due_date: projectData.due_date || now.split('T')[0],
-    tags: projectData.tags || [],
-    created_at: projectData.created_at || now,
+    user_email: projectData.user_email ?? base.user_email,
+    title: projectData.title !== undefined ? projectData.title.trim() || base.title : base.title,
+    description:
+      projectData.description !== undefined ? projectData.description.trim() : base.description,
+    category:
+      projectData.category !== undefined ? projectData.category.trim() || base.category : base.category,
+    status: projectData.status ?? base.status,
+    priority: projectData.priority ?? base.priority,
+    progress_percent: projectData.progress_percent ?? base.progress_percent,
+    start_date: projectData.start_date ?? base.start_date,
+    due_date: projectData.due_date ?? base.due_date,
+    tags: projectData.tags ?? base.tags,
+    created_at: base.created_at || now,
     updated_at: now,
   };
 
   if (isSupabaseConfigured()) {
     try {
-      if (isNew) {
-        const { data, error } = await supabase.from('projects').insert(projectRecord).select().single();
-        if (!error && data) return data as Project;
-        if (error) console.error('Supabase saveProject insert error:', error.message);
-      } else {
-        const { data, error } = await supabase
-          .from('projects')
-          .update(projectRecord)
-          .eq('id', id)
-          .select()
-          .single();
-        if (!error && data) return data as Project;
-        if (error) console.error('Supabase saveProject update error:', error.message);
-      }
+      const { data, error } = await supabase
+        .from('projects')
+        .update(projectRecord)
+        .eq('id', id)
+        .select()
+        .single();
+      if (!error && data) return data as Project;
+      if (error) console.error('Supabase saveProject update error:', error.message);
     } catch (err) {
       console.error('Supabase saveProject exception:', err);
     }
   }
 
   // Local fallback
-  const list = getLocal<Project>(STORAGE_KEYS.PROJECTS, INITIAL_PROJECTS);
-  let updatedList: Project[];
-  if (isNew) {
-    updatedList = [projectRecord, ...list];
-  } else {
-    updatedList = list.map((p) => (p.id === id ? projectRecord : p));
-  }
-  setLocal(STORAGE_KEYS.PROJECTS, updatedList);
+  const found = list.some((p) => p.id === id);
+  setLocal(
+    STORAGE_KEYS.PROJECTS,
+    found ? list.map((p) => (p.id === id ? projectRecord : p)) : [projectRecord, ...list]
+  );
   return projectRecord;
 }
 
@@ -231,6 +284,8 @@ export async function deleteProject(id: string): Promise<boolean> {
 
 // ==========================================
 // TASKS & AUTOMATIC PROGRESS RECALCULATION
+// Update bersifat parsial: field yang tidak dikirim tetap dipertahankan
+// agar ubah status tidak mereset judul menjadi "New Task".
 // ==========================================
 export async function saveTask(taskData: Partial<Task>): Promise<Task> {
   requireLoginEmail();
@@ -238,37 +293,80 @@ export async function saveTask(taskData: Partial<Task>): Promise<Task> {
   const now = new Date().toISOString();
   const id = taskData.id || generateId();
 
-  const task: Task = {
+  if (isNew) {
+    const task: Task = {
+      id,
+      project_id: taskData.project_id!,
+      milestone_id: taskData.milestone_id || null,
+      title: taskData.title?.trim() || 'New Task',
+      status: taskData.status || 'todo',
+      priority: taskData.priority || 'medium',
+      due_date: taskData.due_date,
+      created_at: taskData.created_at || now,
+    };
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('tasks').insert(task);
+      } catch (err) {
+        console.error('Supabase saveTask exception:', err);
+      }
+    }
+
+    const tasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
+    setLocal(STORAGE_KEYS.TASKS, [...tasks, task]);
+
+    await recalculateProjectProgress(task.project_id);
+    return task;
+  }
+
+  // ---- update: gabung dengan data lama ----
+  const localTasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
+  let existing = localTasks.find((t) => t.id === id);
+  if (!existing && isSupabaseConfigured()) {
+    try {
+      const { data } = await supabase.from('tasks').select('*').eq('id', id).single();
+      if (data) existing = data as Task;
+    } catch {
+      /* abaikan, pakai fallback di bawah */
+    }
+  }
+  const base: Task = existing ?? {
     id,
     project_id: taskData.project_id!,
-    milestone_id: taskData.milestone_id || null,
-    title: taskData.title?.trim() || 'New Task',
-    status: taskData.status || 'todo',
-    priority: taskData.priority || 'medium',
-    due_date: taskData.due_date,
-    created_at: taskData.created_at || now,
+    milestone_id: null,
+    title: 'New Task',
+    status: 'todo',
+    priority: 'medium',
+    due_date: undefined,
+    created_at: now,
+  };
+
+  const task: Task = {
+    ...base,
+    id,
+    project_id: taskData.project_id ?? base.project_id,
+    milestone_id: 'milestone_id' in taskData ? taskData.milestone_id || null : base.milestone_id,
+    title: taskData.title !== undefined ? taskData.title.trim() || base.title : base.title,
+    status: taskData.status ?? base.status,
+    priority: taskData.priority ?? base.priority,
+    due_date: 'due_date' in taskData ? taskData.due_date : base.due_date,
+    created_at: base.created_at || now,
   };
 
   if (isSupabaseConfigured()) {
     try {
-      if (isNew) {
-        await supabase.from('tasks').insert(task);
-      } else {
-        await supabase.from('tasks').update(task).eq('id', id);
-      }
+      await supabase.from('tasks').update(task).eq('id', id);
     } catch (err) {
       console.error('Supabase saveTask exception:', err);
     }
   }
 
-  const tasks = getLocal<Task>(STORAGE_KEYS.TASKS, INITIAL_TASKS);
-  let updatedTasks: Task[];
-  if (isNew) {
-    updatedTasks = [...tasks, task];
-  } else {
-    updatedTasks = tasks.map((t) => (t.id === id ? task : t));
-  }
-  setLocal(STORAGE_KEYS.TASKS, updatedTasks);
+  const foundLocally = localTasks.some((t) => t.id === id);
+  setLocal(
+    STORAGE_KEYS.TASKS,
+    foundLocally ? localTasks.map((t) => (t.id === id ? task : t)) : [...localTasks, task]
+  );
 
   await recalculateProjectProgress(task.project_id);
   return task;
@@ -359,35 +457,73 @@ export async function saveMilestone(milestoneData: Partial<Milestone>): Promise<
   const now = new Date().toISOString();
   const id = milestoneData.id || generateId();
 
-  const milestone: Milestone = {
+  if (isNew) {
+    const milestone: Milestone = {
+      id,
+      project_id: milestoneData.project_id!,
+      title: milestoneData.title?.trim() || 'New Milestone',
+      due_date: milestoneData.due_date,
+      is_completed: milestoneData.is_completed ?? false,
+      created_at: milestoneData.created_at || now,
+    };
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('milestones').insert(milestone);
+      } catch (err) {
+        console.error('Supabase saveMilestone exception:', err);
+      }
+    }
+
+    const milestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
+    setLocal(STORAGE_KEYS.MILESTONES, [...milestones, milestone]);
+    return milestone;
+  }
+
+  // ---- update parsial: pertahankan judul & due_date lama ----
+  const localList = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
+  let existing = localList.find((m) => m.id === id);
+  if (!existing && isSupabaseConfigured()) {
+    try {
+      const { data } = await supabase.from('milestones').select('*').eq('id', id).single();
+      if (data) existing = data as Milestone;
+    } catch {
+      /* abaikan */
+    }
+  }
+  const base: Milestone = existing ?? {
     id,
     project_id: milestoneData.project_id!,
-    title: milestoneData.title?.trim() || 'New Milestone',
-    due_date: milestoneData.due_date,
-    is_completed: milestoneData.is_completed ?? false,
-    created_at: milestoneData.created_at || now,
+    title: 'New Milestone',
+    due_date: undefined,
+    is_completed: false,
+    created_at: now,
+  };
+
+  const milestone: Milestone = {
+    ...base,
+    id,
+    project_id: milestoneData.project_id ?? base.project_id,
+    title:
+      milestoneData.title !== undefined ? milestoneData.title.trim() || base.title : base.title,
+    due_date: 'due_date' in milestoneData ? milestoneData.due_date : base.due_date,
+    is_completed: milestoneData.is_completed ?? base.is_completed,
+    created_at: base.created_at || now,
   };
 
   if (isSupabaseConfigured()) {
     try {
-      if (isNew) {
-        await supabase.from('milestones').insert(milestone);
-      } else {
-        await supabase.from('milestones').update(milestone).eq('id', id);
-      }
+      await supabase.from('milestones').update(milestone).eq('id', id);
     } catch (err) {
       console.error('Supabase saveMilestone exception:', err);
     }
   }
 
-  const milestones = getLocal<Milestone>(STORAGE_KEYS.MILESTONES, INITIAL_MILESTONES);
-  let updated: Milestone[];
-  if (isNew) {
-    updated = [...milestones, milestone];
-  } else {
-    updated = milestones.map((m) => (m.id === id ? milestone : m));
-  }
-  setLocal(STORAGE_KEYS.MILESTONES, updated);
+  const found = localList.some((m) => m.id === id);
+  setLocal(
+    STORAGE_KEYS.MILESTONES,
+    found ? localList.map((m) => (m.id === id ? milestone : m)) : [...localList, milestone]
+  );
   return milestone;
 }
 
@@ -415,51 +551,102 @@ export async function saveLogbook(logData: Partial<LogbookEntry>): Promise<Logbo
   const isNew = !logData.id;
   const now = new Date().toISOString();
   const id = logData.id || generateId();
-  const userEmail = logData.user_email || loginEmail;
 
-  const entry: LogbookEntry = {
+  if (isNew) {
+    const userEmail = logData.user_email || loginEmail;
+    const entry: LogbookEntry = {
+      id,
+      project_id: logData.project_id!,
+      user_email: userEmail,
+      title: logData.title?.trim() || 'Catatan Perkembangan',
+      content_markdown: logData.content_markdown || '',
+      log_type: logData.log_type || 'daily_update',
+      blockers: logData.blockers?.trim() || '',
+      author_name: logData.author_name?.trim() || userEmail.split('@')[0] || 'Project Owner',
+      tags: logData.tags || [],
+      created_at: logData.created_at || now,
+      updated_at: now,
+    };
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase.from('logbooks').insert(entry).select().single();
+        if (!error && data) return data as LogbookEntry;
+        if (error) console.error('Supabase saveLogbook insert error:', error.message);
+      } catch (err) {
+        console.error('Supabase saveLogbook exception:', err);
+      }
+    }
+
+    const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
+    setLocal(STORAGE_KEYS.LOGBOOKS, [entry, ...logs]);
+    return entry;
+  }
+
+  // ---- update parsial ----
+  const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
+  let existing = logs.find((l) => l.id === id);
+  if (!existing && isSupabaseConfigured()) {
+    try {
+      const { data } = await supabase.from('logbooks').select('*').eq('id', id).single();
+      if (data) existing = data as LogbookEntry;
+    } catch {
+      /* abaikan */
+    }
+  }
+  const userEmail = logData.user_email ?? existing?.user_email ?? loginEmail;
+  const base: LogbookEntry = existing ?? {
     id,
     project_id: logData.project_id!,
     user_email: userEmail,
-    title: logData.title?.trim() || 'Catatan Perkembangan',
-    content_markdown: logData.content_markdown || '',
-    log_type: logData.log_type || 'daily_update',
-    blockers: logData.blockers?.trim() || '',
-    author_name: logData.author_name?.trim() || userEmail.split('@')[0] || 'Project Owner',
-    tags: logData.tags || [],
-    created_at: logData.created_at || now,
+    title: 'Catatan Perkembangan',
+    content_markdown: '',
+    log_type: 'daily_update',
+    blockers: '',
+    author_name: userEmail.split('@')[0] || 'Project Owner',
+    tags: [],
+    created_at: now,
+    updated_at: now,
+  };
+
+  const entry: LogbookEntry = {
+    ...base,
+    id,
+    project_id: logData.project_id ?? base.project_id,
+    user_email: userEmail,
+    title: logData.title !== undefined ? logData.title.trim() || base.title : base.title,
+    content_markdown: logData.content_markdown ?? base.content_markdown,
+    log_type: logData.log_type ?? base.log_type,
+    blockers: logData.blockers !== undefined ? logData.blockers.trim() : base.blockers,
+    author_name:
+      logData.author_name !== undefined
+        ? logData.author_name.trim() || base.author_name
+        : base.author_name,
+    tags: logData.tags ?? base.tags,
+    created_at: base.created_at || now,
     updated_at: now,
   };
 
   if (isSupabaseConfigured()) {
     try {
-      if (isNew) {
-        const { data, error } = await supabase.from('logbooks').insert(entry).select().single();
-        if (!error && data) return data as LogbookEntry;
-        if (error) console.error('Supabase saveLogbook insert error:', error.message);
-      } else {
-        const { data, error } = await supabase
-          .from('logbooks')
-          .update(entry)
-          .eq('id', id)
-          .select()
-          .single();
-        if (!error && data) return data as LogbookEntry;
-        if (error) console.error('Supabase saveLogbook update error:', error.message);
-      }
+      const { data, error } = await supabase
+        .from('logbooks')
+        .update(entry)
+        .eq('id', id)
+        .select()
+        .single();
+      if (!error && data) return data as LogbookEntry;
+      if (error) console.error('Supabase saveLogbook update error:', error.message);
     } catch (err) {
       console.error('Supabase saveLogbook exception:', err);
     }
   }
 
-  const logs = getLocal<LogbookEntry>(STORAGE_KEYS.LOGBOOKS, INITIAL_LOGBOOKS);
-  let updatedLogs: LogbookEntry[];
-  if (isNew) {
-    updatedLogs = [entry, ...logs];
-  } else {
-    updatedLogs = logs.map((l) => (l.id === id ? entry : l));
-  }
-  setLocal(STORAGE_KEYS.LOGBOOKS, updatedLogs);
+  const found = logs.some((l) => l.id === id);
+  setLocal(
+    STORAGE_KEYS.LOGBOOKS,
+    found ? logs.map((l) => (l.id === id ? entry : l)) : [entry, ...logs]
+  );
   return entry;
 }
 

@@ -6,15 +6,15 @@
     {
       "id": "proj-mms-r1",
       "title": "MMS — Merdeka Magnetic Studio (R1)",
-      "description": "Desktop workstation PyQt6 untuk pengolahan magnetik GSM-19 (Base GSM-19FB + Rover GSM-19W). Cakupan R1: parse Base/Rover, koreksi diurnal, QC dashboard, paket proyek .magproj, import wizard, tampilan Map/Profile/Table, export CSV, batch 86 rover campaign, grid + enhancement (RTP/tilt), replikasi SOP legacy, dan build EXE.",
+      "description": "Workstation desktop PyQt6 + PyQtGraph untuk pengolahan magnetik GSM-19 (Base GSM-19FB SN 41210241 + Rover GSM-19W SN 50110317/50110316, data SalakanNorth 46 hari). R1: parser Base/Rover + Time Engine, koreksi diurnal, QC flag, paket .magproj (SQLite+manifest), import wizard, GUI Map/Profile/Table + panel QC + inspector, export CSV, batch campaign + merge store, grid + enhancement engine, replikasi SOP legacy. Terverifikasi: 79/79 test hijau (54 unit + 25 UI offscreen).",
       "category": "Geofisika",
       "status": "in_progress",
       "priority": "high",
-      "progress_percent": 86,
-      "start_date": "2026-09-29",
-      "due_date": "2026-10-15",
-      "tags": ["PyQt6", "GSM-19", "Magnetik", "Python", "SalakanNorth"],
-      "created_at": "2026-09-29T08:00:00Z",
+      "progress_percent": 78,
+      "start_date": "2026-09-28",
+      "due_date": "2026-10-10",
+      "tags": ["PyQt6", "PyQtGraph", "GSM-19", "Magnetik", "SalakanNorth"],
+      "created_at": "2026-09-28T08:00:00Z",
       "updated_at": "2026-09-30T00:00:00Z"
     }
   ],
@@ -23,57 +23,57 @@
       "id": "ms-mms-m0",
       "project_id": "proj-mms-r1",
       "title": "M0 — Kontrak data & inventaris SalakanNorth",
-      "due_date": "2026-09-29",
+      "due_date": "2026-09-28",
       "is_completed": true,
-      "created_at": "2026-09-29T08:00:00Z"
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "ms-mms-m1",
       "project_id": "proj-mms-r1",
-      "title": "M1 — Parser GSM-19 + Time Engine",
-      "due_date": "2026-09-29",
+      "title": "M1 — I/O GSM-19 + Time Engine + discovery campaign",
+      "due_date": "2026-09-28",
       "is_completed": true,
-      "created_at": "2026-09-29T08:00:00Z"
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "ms-mms-m2",
       "project_id": "proj-mms-r1",
-      "title": "M2 — Koreksi diurnal + QC flags",
-      "due_date": "2026-09-29",
+      "title": "M2 — Koreksi diurnal + QC + koordinat UTM50S",
+      "due_date": "2026-09-28",
       "is_completed": true,
-      "created_at": "2026-09-29T08:00:00Z"
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "ms-mms-m3",
       "project_id": "proj-mms-r1",
-      "title": "M3 — Paket .magproj + GUI R1 (Map/Profile/Table + Export CSV)",
-      "due_date": "2026-09-30",
+      "title": "M3 — Paket .magproj + GUI R1 + export CSV",
+      "due_date": "2026-09-29",
       "is_completed": true,
-      "created_at": "2026-09-29T08:00:00Z"
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "ms-mms-m4",
       "project_id": "proj-mms-r1",
-      "title": "M4 — Batch campaign (1 Base → N Rover, 86 rover)",
-      "due_date": "2026-10-02",
+      "title": "M4 — Batch multi-segmen + campaign merge store",
+      "due_date": "2026-09-29",
       "is_completed": true,
-      "created_at": "2026-09-29T08:00:00Z"
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "ms-mms-m5",
       "project_id": "proj-mms-r1",
-      "title": "M5 — Gridding + Enhancement (RTP, tilt) + regional/leveling/filtering",
-      "due_date": "2026-10-05",
-      "is_completed": true,
-      "created_at": "2026-09-29T08:00:00Z"
+      "title": "M5 — Grid + enhancement engine (integrasi GUI sisa)",
+      "due_date": "2026-10-03",
+      "is_completed": false,
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "ms-mms-m6",
       "project_id": "proj-mms-r1",
-      "title": "M6 — Replikasi SOP + Garmin converter + Build EXE",
-      "due_date": "2026-10-15",
+      "title": "M6 — Replikasi SOP legacy (uncommitted, segera commit)",
+      "due_date": "2026-10-10",
       "is_completed": false,
-      "created_at": "2026-09-29T08:00:00Z"
+      "created_at": "2026-09-30T08:00:00Z"
     }
   ],
   "tasks": [
@@ -81,200 +81,270 @@
       "id": "task-mms-01",
       "project_id": "proj-mms-r1",
       "milestone_id": "ms-mms-m0",
-      "title": "Inventaris 46 folder SalakanNorth (136 txt, 2 hari kosong) — SALAKANNORTH_CATALOG.md",
+      "title": "Tulis DATA_CONTRACT + GSM19_FORMAT + SALAKANNORTH_CATALOG (46 folder, 44 berisi, kosong 20260605/20260614)",
       "status": "done",
       "priority": "high",
-      "due_date": "2026-09-29",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-02",
       "project_id": "proj-mms-r1",
       "milestone_id": "ms-mms-m0",
-      "title": "Kunci DATA_CONTRACT.md (datum 45000, UTM 50S, SQ legacy, zero-GPS flag)",
+      "title": "Kunci golden pair 20260518 (8665 base vs 304 rover, datum 45000.00, 62 zero-GPS)",
       "status": "done",
       "priority": "high",
-      "due_date": "2026-09-29",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-03",
       "project_id": "proj-mms-r1",
       "milestone_id": "ms-mms-m1",
-      "title": "Parser Base GSM-19FB (time/nT/sq + header datum, toleran nama spasi)",
+      "title": "models.py: dataclass FileInfo/BaseHeader/RoverHeader/observations/warnings",
       "status": "done",
-      "priority": "high",
-      "due_date": "2026-09-29",
-      "created_at": "2026-09-29T08:00:00Z"
+      "priority": "medium",
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-04",
       "project_id": "proj-mms-r1",
       "milestone_id": "ms-mms-m1",
-      "title": "Parser Rover GSM-19W (13 kolom, /line segmen, toleransi koma) + sniffer FB vs W",
+      "title": "base_parser + rover_parser + sniffer (toleran spasi 20260519, koma, suffix _, multi-/line)",
       "status": "done",
       "priority": "high",
-      "due_date": "2026-09-29",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-05",
       "project_id": "proj-mms-r1",
       "milestone_id": "ms-mms-m1",
-      "title": "Time Engine hhmmss.s ↔ epoch (UTC+7 output, midnight rollover, gap detect)",
+      "title": "Time Engine hhmmss.s: roundtrip, rollover, duplikat/gap detect (test_time_engine 4 test)",
       "status": "done",
       "priority": "medium",
-      "due_date": "2026-09-29",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-06",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m2",
-      "title": "Koreksi diurnal rover − base_interp + datum (NaN + OUTSIDE_BASE_RANGE)",
+      "milestone_id": "ms-mms-m1",
+      "title": "campaign.py: discover_days + roman /ID→tanggal + group_for_pairing (test_campaign_import 8 test)",
       "status": "done",
-      "priority": "high",
-      "due_date": "2026-09-29",
-      "created_at": "2026-09-29T08:00:00Z"
+      "priority": "medium",
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-07",
       "project_id": "proj-mms-r1",
       "milestone_id": "ms-mms-m2",
-      "title": "QC flags (MISSING_GPS 983 baris, CRS_MISMATCH >1m, SQ legacy 69/79/89/99)",
+      "title": "Diurnal rover−base_interp+datum + mode datum + OUTSIDE/LARGE_GAP→None (test_diurnal 7 test)",
       "status": "done",
       "priority": "high",
-      "due_date": "2026-09-29",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-08",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m3",
-      "title": "Paket proyek .magproj (raw immutable + DatasetVersion + run UUID)",
+      "milestone_id": "ms-mms-m2",
+      "title": "run_qc tanpa hapus data: GPS hilang, SQ legacy 69/79/89/99, LOW_SAT, CRS_MISMATCH, MAG_SPIKE (test_qc)",
       "status": "done",
       "priority": "high",
-      "due_date": "2026-09-30",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-09",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m3",
-      "title": "Import wizard + preview + project explorer + recent",
+      "milestone_id": "ms-mms-m2",
+      "title": "coordinates: validasi UTM 50S (EPSG:32750) + jam lokal UTC+7; demo_m2 + corrected_20260518.csv",
       "status": "done",
       "priority": "medium",
-      "due_date": "2026-09-30",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-10",
       "project_id": "proj-mms-r1",
       "milestone_id": "ms-mms-m3",
-      "title": "GUI R1: Process dialog → Map/Profile/Table + QC dashboard + inspector + Export CSV",
+      "title": "project_package: .magproj SQLite+manifest+validate+provenance + project_service (test_m3_package)",
       "status": "done",
       "priority": "high",
-      "due_date": "2026-09-30",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-29",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-11",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m4",
-      "title": "Campaign service + pairing per-tanggal (1 Base → N Rover, A+B sharing)",
+      "milestone_id": "ms-mms-m3",
+      "title": "Import wizard 3 mode (files/day/campaign) + preview + overlap/coverage (test_import_wizard 4 test)",
       "status": "done",
       "priority": "high",
-      "due_date": "2026-10-01",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-29",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-12",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m4",
-      "title": "Batch worker + batch diurnal dialog (fail-soft: hari kosong & segmen lompat _4→_6)",
+      "milestone_id": "ms-mms-m3",
+      "title": "Main window: dock explorer + Map/Profile/Table + inspector + recent(10) + tema Fusion (r1_smoke, theme, recent)",
       "status": "done",
-      "priority": "medium",
-      "due_date": "2026-10-02",
-      "created_at": "2026-09-29T08:00:00Z"
+      "priority": "high",
+      "due_date": "2026-09-29",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-13",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m4",
-      "title": "Stress test 86 rover + demo_m4 + demo_campaign_merge",
+      "milestone_id": "ms-mms-m3",
+      "title": "QC panel: ringkasan+rincian, klik→jump baris, filter→tabel (test_qc_jump, raw_view)",
       "status": "done",
       "priority": "medium",
-      "due_date": "2026-10-02",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-29",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-14",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m5",
-      "title": "Gridding corrected (grid_corrected.nc/.npz/.png) + map/profile PNG",
+      "milestone_id": "ms-mms-m3",
+      "title": "Filter dialog + filtering_service + provenance (default drop GPS+OUTSIDE) (test_filtering 5 test)",
       "status": "done",
-      "priority": "high",
-      "due_date": "2026-10-04",
-      "created_at": "2026-09-29T08:00:00Z"
+      "priority": "medium",
+      "due_date": "2026-09-29",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-15",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m5",
-      "title": "Enhancement RTP + tilt + filter dialog (grid_rtp.png, grid_tilt.png, grid_as.png)",
+      "milestone_id": "ms-mms-m3",
+      "title": "Export CSV preset 13 kolom + plot headless map/profile + demo_m3 + demo_SLN.magproj",
       "status": "done",
       "priority": "medium",
-      "due_date": "2026-10-05",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-29",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-16",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m5",
-      "title": "Regional + leveling + filtering service + exclusion_report.csv",
+      "milestone_id": "ms-mms-m4",
+      "title": "run_batch: 1 Base+N Rover, pilih base terluas, fail-soft per file (test batch 20260528/20260619)",
       "status": "done",
-      "priority": "medium",
-      "due_date": "2026-10-05",
-      "created_at": "2026-09-29T08:00:00Z"
+      "priority": "high",
+      "due_date": "2026-09-29",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-17",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m6",
-      "title": "Replikasi SOP legacy (convert_mag2db_all_v2 + magproc, SOP_ALL_DAYS.csv)",
-      "status": "in_progress",
+      "milestone_id": "ms-mms-m4",
+      "title": "campaign_service plan/process/merge + merged store dedup (E,N) + cache parquet (test_m4_processing)",
+      "status": "done",
       "priority": "high",
-      "due_date": "2026-10-08",
-      "created_at": "2026-09-29T08:00:00Z"
+      "due_date": "2026-09-29",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-18",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m6",
-      "title": "Garmin converter + theme rows + filtering GUI polish",
-      "status": "in_progress",
+      "milestone_id": "ms-mms-m4",
+      "title": "BatchDiurnalDialog + run_project_batch + demo_M4.magproj + campaign_merge parquet (test_batch_diurnal)",
+      "status": "done",
       "priority": "medium",
-      "due_date": "2026-10-10",
-      "created_at": "2026-09-30T08:00:00Z"
+      "due_date": "2026-09-29",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-19",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m6",
-      "title": "Build EXE via GitHub Actions + rapikan artefak (32 test hijau)",
-      "status": "todo",
-      "priority": "high",
-      "due_date": "2026-10-12",
-      "created_at": "2026-09-30T08:00:00Z"
+      "milestone_id": "ms-mms-m4",
+      "title": "demo_m4 + demo_campaign (incremental/separate) — stress seluruh hari SalakanNorth",
+      "status": "done",
+      "priority": "medium",
+      "due_date": "2026-09-29",
+      "created_at": "2026-09-28T08:00:00Z"
     },
     {
       "id": "task-mms-20",
       "project_id": "proj-mms-r1",
-      "milestone_id": "ms-mms-m6",
-      "title": "Dokumentasi README run (pytest engine/GUI, demo_m3/m4, alur R1) + rilis R1",
+      "milestone_id": "ms-mms-m5",
+      "title": "Gridding: linear/cubic/nearest/IDW + auto-cell + blanking + npz/nc/zarr (test_m5_gridenh)",
+      "status": "done",
+      "priority": "high",
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
+    },
+    {
+      "id": "task-mms-21",
+      "project_id": "proj-mms-r1",
+      "milestone_id": "ms-mms-m5",
+      "title": "Enhancement: RTP/upward/VD/THDR/AS/tilt + grid_rtp/tilt/as.png (RTP pakai inklinasi 19/05, ada caveat)",
+      "status": "done",
+      "priority": "medium",
+      "due_date": "2026-09-28",
+      "created_at": "2026-09-28T08:00:00Z"
+    },
+    {
+      "id": "task-mms-22",
+      "project_id": "proj-mms-r1",
+      "milestone_id": "ms-mms-m5",
+      "title": "Hubungkan STANDARD_GSM19 ke ProcessDialog GUI (saat ini combo [none] disabled; batch pakai passthrough)",
+      "status": "todo",
+      "priority": "high",
+      "due_date": "2026-10-03",
+      "created_at": "2026-09-30T08:00:00Z"
+    },
+    {
+      "id": "task-mms-23",
+      "project_id": "proj-mms-r1",
+      "milestone_id": "ms-mms-m5",
+      "title": "Simpan grid/enhancement ke .magproj + tampilkan di explorer/Map (saat ini hanya di exports/)",
       "status": "todo",
       "priority": "medium",
-      "due_date": "2026-10-15",
+      "due_date": "2026-10-03",
+      "created_at": "2026-09-30T08:00:00Z"
+    },
+    {
+      "id": "task-mms-24",
+      "project_id": "proj-mms-r1",
+      "milestone_id": "ms-mms-m6",
+      "title": "sop_replicate: assign_lines + replicate_day/campaign + load_design, cocok legacy 1e-6 (3 test hijau)",
+      "status": "in_progress",
+      "priority": "high",
+      "due_date": "2026-10-05",
+      "created_at": "2026-09-30T08:00:00Z"
+    },
+    {
+      "id": "task-mms-25",
+      "project_id": "proj-mms-r1",
+      "milestone_id": "ms-mms-m6",
+      "title": "Toolbar SOP CSV + demo_sop (verifikasi vs Rekap xlsx ±5 cm) + SOP_ALL_DAYS.csv + exclusion_report.csv",
+      "status": "in_progress",
+      "priority": "medium",
+      "due_date": "2026-10-06",
+      "created_at": "2026-09-30T08:00:00Z"
+    },
+    {
+      "id": "task-mms-26",
+      "project_id": "proj-mms-r1",
+      "milestone_id": "ms-mms-m6",
+      "title": "Commit + push M6 (sop_replicate, demo_sop, exclusion_report, test) — masih uncommitted di working tree",
+      "status": "todo",
+      "priority": "high",
+      "due_date": "2026-10-08",
+      "created_at": "2026-09-30T08:00:00Z"
+    },
+    {
+      "id": "task-mms-27",
+      "project_id": "proj-mms-r1",
+      "milestone_id": "ms-mms-m6",
+      "title": "Perbarui README (masih tulis 31/32 test; aktual 79) + putuskan 8 menu kosong & build EXE MMS",
+      "status": "todo",
+      "priority": "medium",
+      "due_date": "2026-10-10",
       "created_at": "2026-09-30T08:00:00Z"
     }
   ],
@@ -282,26 +352,38 @@
     {
       "id": "log-mms-01",
       "project_id": "proj-mms-r1",
-      "title": "R1 tembus: GUI + batch 86 rover + grid RTP/tilt",
-      "content_markdown": "### Pencapaian R1\n- Parser Base/Rover + Time Engine hijau (golden 20260518: 8665 base vs 304 rover).\n- Diurnal `corrected = rover - base_interp + datum(45000)` + QC zero-GPS 983 baris (flag, tidak hapus).\n- GUI: New/Open .magproj → Import wizard → Process → Map/Profile/Table + QC dashboard + Export CSV.\n- Batch 86 rover campaign + fail-soft hari kosong (20260605/20260614) & segmen lompat.\n- Grid corrected + RTP + tilt + exclusion_report.csv tersedia di `exports/`.\n\n### Berikutnya (M6)\n- Finalisasi replikasi SOP + Garmin converter.\n- Build EXE via Actions sampai 32 test hijau stabil.",
+      "title": "79/79 test hijau: R1 fungsional penuh",
+      "content_markdown": "### Hasil uji 30 Sep 2026\n- Unit (tanpa Qt): **54 passed** — parser golden, time engine, diurnal, QC, package, batch/pipeline, grid/enhancement, campaign, SOP.\n- UI (offscreen, venv `~/.venvs/mms`): **25 passed** — R1 smoke (tabel 304 + inspector 44747.57), import wizard 46 hari, batch 2 hari, filter+provenance, QC jump, recent, theme.\n- Total: **79/79 hijau**. README masih tulis 31/32 — kedaluwarsa, masuk task-mms-27.\n\n### Fungsional R1 terkonfirmasi\n- Parse→diurnal (`rover − base_interp + datum 45000`)→QC→tabel 304 baris golden.\n- .magproj (SQLite+manifest+checksum+provenance), import 3 mode, Map/Profile/Table, QC jump+filter, export CSV 13 kolom.\n- Batch fail-soft + merge dedup (E,N) + cache parquet; grid+enhancement engine (RTP/tilt/AS).",
       "log_type": "milestone",
       "blockers": "",
       "author_name": "Project Owner",
-      "tags": ["MMS", "R1", "GSM-19"],
+      "tags": ["MMS", "R1", "pytest"],
       "created_at": "2026-09-30T00:00:00Z",
       "updated_at": "2026-09-30T00:00:00Z"
     },
     {
       "id": "log-mms-02",
       "project_id": "proj-mms-r1",
-      "title": "Catatan QC: 983 zero-GPS & datum stabil",
-      "content_markdown": "### Temuan QC\n- `sat=00` + koordinat nol: magnetik tetap valid, flag `INVALID_POSITION/MISSING_GPS`.\n- Datum `/datum 45000.00` + SN Base 41210241 stabil semua hari.\n- CRS terkunci UTM 50S (EPSG:32750), deviasi 0.02 m vs WGS84; QC `CRS_MISMATCH` bila > 1 m.\n- SQ legacy: 69/79/89/99 lolos; opsi konservatif `min >= 90`.",
+      "title": "Angka QC golden 20260518 (acuan)",
+      "content_markdown": "### Golden 20260518 (test_qc, terkunci)\n- Base GSM-19FB SN 41210241: 8665 obs, `015324.0–041748.0`, nT 44755.52–44764.52, sq 100% = 99.\n- Rover GSM-19W SN 50110317: 304 obs, `/line 000028`, sq {99:303, 69:1}, `cor-nT` selalu 0, picket selalu 0 0.\n- QC: INVALID_POSITION = 62 (sat=00, magnetik tetap valid), OUTSIDE = 0, GAP = 0, BAD_SQ = 0 (69 lolos legacy), CRS_MISMATCH = 0 (UTM 50S).\n- Campaign: 983 baris zero-GPS — beban QC utama, hanya flag.\n- RTP demo pakai inklinasi −32.6713 / deklinasi 0.7032 / F 42551.5 milik 19/05 — ada CAVEAT untuk data 18th.",
       "log_type": "general",
-      "blockers": "Makna position-type S/W & picket-x/y masih menunggu cek manual.",
+      "blockers": "Makna position-type S/W, picket-x/y, dan kolom /ID .b/.m masih menunggu cek manual (DATA_CONTRACT §8).",
       "author_name": "Project Owner",
-      "tags": ["QC", "SalakanNorth"],
+      "tags": ["QC", "SalakanNorth", "GSM-19"],
       "created_at": "2026-09-29T12:00:00Z",
       "updated_at": "2026-09-29T12:00:00Z"
+    },
+    {
+      "id": "log-mms-03",
+      "project_id": "proj-mms-r1",
+      "title": "Sisa jujur R1: pipeline GUI, grid di paket, SOP uncommitted",
+      "content_markdown": "### Yang belum (masuk M5/M6, bukan klaim selesai)\n1. `ProcessDialog` pipeline combo hanya `[none]` (disabled) — `STANDARD_GSM19` (despike+leveling+regional) baru dipakai `demo_m4`; batch GUI pakai passthrough.\n2. Grid/enhancement hanya tertulis ke `exports/` (*.png/npz/nc) — belum masuk `.magproj`, node explorer Grids/Enhancements/Inversions belum terisi dari GUI.\n3. 8 menu (Data/Process/Map/Enhancement/Inversion/Export/View/Help) masih kosong.\n4. SOP replicate + toolbar `SOP CSV...` + `demo_sop`/`exclusion_report` + testnya **belum di-commit** (working tree only).\n5. Workflow `build-exe.yml` milik **GarminConverter** (folder tetangga), bukan MMS — MMS belum punya build EXE.",
+      "log_type": "blocker",
+      "blockers": "Keputusan: isi 8 menu kosong atau hapus; skema build EXE khusus MMS bila rilis desktop diperlukan.",
+      "author_name": "Project Owner",
+      "tags": ["R1-gap", "MMS"],
+      "created_at": "2026-09-30T00:00:00Z",
+      "updated_at": "2026-09-30T00:00:00Z"
     }
   ]
 }
